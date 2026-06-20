@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import streamlit as st
 from frontend.utils.api_client import fetch_stats, send_chat, upload_log, BACKEND_URL, LOGMON_API_KEY
 from frontend.utils.chart_renderer import render_trend_chart

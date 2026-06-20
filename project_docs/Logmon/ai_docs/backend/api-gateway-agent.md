@@ -75,6 +75,13 @@ async def upload_log(payload: dict, api_key: str = Depends(verify_api_key)):
     return {"status": "success", "processed_records": len(payload.get("logs", []))}
 ```
 
+#### 4단계: 대시보드 통계 API (Stats API) 설계
+* 프론트엔드 대시보드의 에이전트 가동 상태 메트릭을 지원하기 위해 `GET /api/logmon/stats` 엔드포인트를 라우터에 추가합니다.
+* 응답(Response)에 반드시 다음 항목을 포함해야 합니다:
+  1. `uptime_days`: 최초 수집일 이후 경과일 (가동 며칠 차)
+  2. `total_lines` 및 `total_bytes`: 에이전트를 통해 수집된 누적 로그 라인 수 및 바이트 크기
+  3. `last_sync_time`: 가장 마지막으로 로그가 들어온 시각 (ISO 포맷 또는 경과 시간)
+
 ---
 
 ## 🚨 3. 철벽 코드 컨벤션 및 제약 조건

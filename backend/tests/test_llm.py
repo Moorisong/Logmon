@@ -1,0 +1,87 @@
+import pytest
+import respx
+import httpx
+from unittest.mock import patch
+
+from backend.llm.client import generate_completion, OLLAMA_HOST, OLLAMA_NUM_THREAD
+from backend.llm.rag_engine import ask_rag_agent
+from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
+
+# 1. 비동기 HTTP 클라이언트 Mock 테스트 (respx 활용)
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_success():
+    """정상적으로 Ollama API가 응답할 때의 결과 파싱 테스트"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    
+    mock_route = respx.post(endpoint).mock(
+        return_value=httpx.Response(200, json={"response": "Mocked AI Answer"})
+    )
+    
+    result = await generate_completion("테스트 질문")
+    
+    assert mock_route.called
+    assert result == "Mocked AI Answer"
+    
+    # Payload에 num_thread가 잘 들어갔는지 확인
+    request = mock_route.calls.last.request
+    import json
+    payload = json.loads(request.content)
+    assert payload["options"]["num_thread"] == OLLAMA_NUM_THREAD
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_timeout_fallback():
+    """타임아웃 발생 시 안전 장치 메시지가 반환되는지 테스트"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    
+    respx.post(endpoint).mock(side_effect=httpx.TimeoutException("Timeout"))
+    
+    result = await generate_completion("지연되는 질문")
+    assert result == ERROR_FALLBACK_MESSAGE
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_connection_error_fallback():
+    """서버 다운 등 Network Error 발생 시 안전 장치 반환 테스트"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    
+    respx.post(endpoint).mock(side_effect=httpx.ConnectError("Connection refused"))
+    
+    result = await generate_completion("서버 다운 질문")
+    assert result == ERROR_FALLBACK_MESSAGE
+
+# 2. RAG 엔진 템플릿 주입 통합 테스트
+@pytest.mark.asyncio
+@patch('backend.llm.rag_engine.query_vectors')
+@patch('backend.llm.rag_engine.generate_completion')
+async def test_ask_rag_agent_with_context(mock_generate, mock_query):
+    # Chroma DB에서 유사 문서를 찾아왔다고 가정
+    mock_query.return_value = [["과거 로그 내용 1", "과거 로그 내용 2"]]
+    mock_generate.return_value = "RAG 처리된 AI 응답"
+    
+    answer = await ask_rag_agent("도커 에러 어떻게 풀었지?", "test_user_key")
+    
+    assert answer == "RAG 처리된 AI 응답"
+    mock_query.assert_called_once_with(query_text="도커 에러 어떻게 풀었지?", n_results=3, user_key="test_user_key")
+    
+    # 생성된 프롬프트 검증
+    prompt_sent = mock_generate.call_args[0][0]
+    assert "과거 로그 내용 1" in prompt_sent
+    assert "도커 에러 어떻게 풀었지?" in prompt_sent
+
+@pytest.mark.asyncio
+@patch('backend.llm.rag_engine.query_vectors')
+@patch('backend.llm.rag_engine.generate_completion')
+async def test_ask_rag_agent_empty_context(mock_generate, mock_query):
+    # Chroma DB에서 문서를 찾지 못한 경우 (빈 리스트)
+    mock_query.return_value = [[]]
+    mock_generate.return_value = "RAG 빈 컨텍스트 AI 응답"
+    
+    answer = await ask_rag_agent("처음 보는 에러?", "test_user_key")
+    
+    assert answer == "RAG 빈 컨텍스트 AI 응답"
+    
+    prompt_sent = mock_generate.call_args[0][0]
+    # 빈 컨텍스트 방어 문구가 들어갔는지 확인
+    assert "관련된 과거 로그 컨텍스트가 없습니다." in prompt_sent

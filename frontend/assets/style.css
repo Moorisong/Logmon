@@ -1,0 +1,87 @@
+/* 
+  Logmon Pastel Neumorphism Stylesheet
+  - Main Color: Sage Green (#A3C1AD)
+  - Background: Soft Warm White (#F2F5F3)
+*/
+
+/* 1. 배경 및 전역 폰트 재정의 */
+.stApp {
+    background-color: #F2F5F3;
+    font-family: 'Inter', 'Apple SD Gothic Neo', sans-serif;
+}
+
+/* Streamlit 기본 헤더 및 여백 숨기기 */
+header { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+
+/* 2. 뉴모피즘 엠보싱 카드 (스코어카드용) */
+.neumorphic-card {
+    background-color: #F2F5F3;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 8px 8px 16px #d1d4d2, -8px -8px 16px #ffffff;
+    margin-bottom: 20px;
+    text-align: center;
+    transition: all 0.2s ease-in-out;
+}
+
+.neumorphic-card:hover {
+    box-shadow: inset 4px 4px 8px #d1d4d2, inset -4px -4px 8px #ffffff;
+}
+
+.neumorphic-title {
+    font-size: 14px;
+    color: #8A9A90;
+    margin-bottom: 8px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.neumorphic-value {
+    font-size: 32px;
+    color: #A3C1AD; /* Sage Green */
+    font-weight: 800;
+}
+
+/* 3. 챗 인터페이스 커스텀 (각진 사각형) */
+/* 사용자의 메시지 버블 */
+[data-testid="stChatMessage"]:nth-child(even) {
+    background-color: #E2ECE5; /* 라이트 세이지 */
+    border-radius: 8px; /* 둥근 모양을 각진 모양으로 축소 */
+    padding: 10px 15px;
+    margin: 10px 0;
+    box-shadow: 2px 2px 5px #d1d4d2, -2px -2px 5px #ffffff;
+}
+
+/* AI(로그몬)의 메시지 버블 */
+[data-testid="stChatMessage"]:nth-child(odd) {
+    background-color: #FCECE8; /* 파스텔 피치 */
+    border-radius: 8px;
+    padding: 10px 15px;
+    margin: 10px 0;
+    box-shadow: 2px 2px 5px #d1d4d2, -2px -2px 5px #ffffff;
+}
+
+/* 챗 인풋 창 고정 및 뉴모피즘 처리 */
+[data-testid="stChatInput"] {
+    background-color: #F2F5F3 !important;
+    border-radius: 12px !important;
+    box-shadow: inset 4px 4px 8px #d1d4d2, inset -4px -4px 8px #ffffff !important;
+    border: none !important;
+}
+
+/* 4. 사이드바 스타일링 */
+[data-testid="stSidebar"] {
+    background-color: #EBF0EC;
+    box-shadow: 5px 0 15px rgba(0,0,0,0.03);
+}
+
+.sidebar-title {
+    font-size: 24px;
+    font-weight: 900;
+    color: #A3C1AD;
+    text-align: center;
+    margin-bottom: 20px;
+    text-shadow: 1px 1px 2px #fff;
+}

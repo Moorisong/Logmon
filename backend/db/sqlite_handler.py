@@ -170,6 +170,9 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
                 "count": date_counts.get(d_str, 0)
             })
             
+        current_db_mb = get_total_db_size_mb()
+        max_db_mb = 500.0
+            
         return {
             "total_logs": total_logs,
             "today_tokens": today_tokens,
@@ -178,13 +181,95 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
             "uptime_days": uptime_days,
             "total_lines": total_lines,
             "total_bytes": total_bytes,
-            "last_sync_time": last_sync_time
+            "last_sync_time": last_sync_time,
+            "current_db_mb": round(current_db_mb, 2),
+            "max_db_mb": max_db_mb
         }
     except sqlite3.Error as e:
         logger.error(f"대시보드 통계 집계 중 에러 발생: {e}")
         return {
             "total_logs": 0, "today_tokens": 0, "has_code_ratio": 0.0, "trend_7d": [],
-            "uptime_days": 0, "total_lines": 0, "total_bytes": 0, "last_sync_time": None
+            "uptime_days": 0, "total_lines": 0, "total_bytes": 0, "last_sync_time": None,
+            "current_db_mb": 0.0, "max_db_mb": 500.0
         }
     finally:
         conn.close()
+
+def get_total_db_size_mb() -> float:
+    from backend.db.connection import get_db_path
+    from backend.db.chroma_handler import get_chroma_dir
+    import os
+
+    total_bytes = 0
+    
+    # 1. SQLite 크기 측정
+    sqlite_path = get_db_path()
+    if os.path.exists(sqlite_path):
+        total_bytes += os.path.getsize(sqlite_path)
+        
+    # 2. Chroma DB 디렉토리 크기 합산
+    chroma_dir = get_chroma_dir()
+    if os.path.exists(chroma_dir):
+        for root, dirs, files in os.walk(chroma_dir):
+            for file in files:
+                total_bytes += os.path.getsize(os.path.join(root, file))
+                
+    return total_bytes / (1024 * 1024)
+
+def cleanup_ttl_logs() -> list[int]:
+    """
+    7일이 지난 오래된 로그를 삭제하고 삭제된 레코드 ID 리스트를 반환합니다.
+    """
+    conn = get_connection()
+    deleted_ids = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION;")
+        
+        cursor.execute("SELECT id FROM ide_activity_logs WHERE timestamp < datetime('now', '-7 days', 'localtime')")
+        rows = cursor.fetchall()
+        deleted_ids = [r[0] for r in rows]
+        
+        if deleted_ids:
+            placeholders = ",".join(["?"] * len(deleted_ids))
+            cursor.execute(f"DELETE FROM ide_activity_logs WHERE id IN ({placeholders})", deleted_ids)
+            
+        cursor.execute("COMMIT;")
+        if deleted_ids:
+            logger.info(f"SQLite 7일 TTL 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
+    except sqlite3.Error as e:
+        logger.error(f"SQLite TTL 클리닝 중 에러: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+        
+    return deleted_ids
+
+def cleanup_old_logs(limit: int = 100) -> list[int]:
+    """
+    용량 상한선에 도달했을 때 가장 오래된 로그를 삭제하고 삭제된 ID 리스트를 반환합니다.
+    """
+    conn = get_connection()
+    deleted_ids = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION;")
+        
+        cursor.execute("SELECT id FROM ide_activity_logs ORDER BY timestamp ASC LIMIT ?", (limit,))
+        rows = cursor.fetchall()
+        deleted_ids = [r[0] for r in rows]
+        
+        if deleted_ids:
+            placeholders = ",".join(["?"] * len(deleted_ids))
+            cursor.execute(f"DELETE FROM ide_activity_logs WHERE id IN ({placeholders})", deleted_ids)
+            
+        cursor.execute("COMMIT;")
+        if deleted_ids:
+            logger.info(f"SQLite FIFO 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
+    except sqlite3.Error as e:
+        logger.error(f"SQLite FIFO 클리닝 중 에러: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+        
+    return deleted_ids

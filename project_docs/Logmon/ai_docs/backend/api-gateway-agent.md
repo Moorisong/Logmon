@@ -71,7 +71,8 @@ router = APIRouter(prefix="/api/logmon")
 @router.post("/upload")
 async def upload_log(payload: dict, api_key: str = Depends(verify_api_key)):
     # payload: { "source_tool": "Cursor", "logs": [...] }
-    # DB 적재 및 Chroma DB RAG 벡터 파이프라인 연동 트리거
+    # 1. DB 적재 및 Chroma DB RAG 벡터 파이프라인 연동 트리거
+    # 2. 백그라운드 태스크(BackgroundTasks)를 활용해 DB 전체 용량 500MB 상한선 체크 및 FIFO 클리닝 연쇄 트리거
     return {"status": "success", "processed_records": len(payload.get("logs", []))}
 ```
 
@@ -81,6 +82,7 @@ async def upload_log(payload: dict, api_key: str = Depends(verify_api_key)):
   1. `uptime_days`: 최초 수집일 이후 경과일 (가동 며칠 차)
   2. `total_lines` 및 `total_bytes`: 에이전트를 통해 수집된 누적 로그 라인 수 및 바이트 크기
   3. `last_sync_time`: 가장 마지막으로 로그가 들어온 시각 (ISO 포맷 또는 경과 시간)
+  4. `current_db_mb` 및 `max_db_mb`: 현재 SQLite+Chroma 누적 DB 용량 및 최대 하드캡 상한선(예: 500). 프론트엔드 용량 게이지 렌더링용.
 
 ---
 

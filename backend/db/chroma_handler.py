@@ -192,3 +192,19 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "") -> Li
     except Exception as e:
         logger.error(f"query_vectors 조회 중 에러 발생: {e}")
         return []
+
+def delete_vectors_by_log_ids(log_ids: List[int]):
+    """
+    주어진 SQLite 로그 ID 리스트와 매핑되는 Chroma DB 벡터 청크들을 일괄 삭제합니다.
+    """
+    if not log_ids:
+        return
+        
+    try:
+        collection = get_collection()
+        collection.delete(
+            where={"id": {"$in": log_ids}}
+        )
+        logger.info(f"Chroma DB 벡터 클리닝 완료. 연동된 로그 ID 수: {len(log_ids)}")
+    except Exception as e:
+        logger.error(f"Chroma DB 벡터 클리닝 중 에러 발생: {e}")

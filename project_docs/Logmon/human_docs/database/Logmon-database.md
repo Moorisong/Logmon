@@ -36,6 +36,12 @@ CREATE INDEX idx_activity_user_time ON ide_activity_logs(user_key, timestamp);
 CREATE INDEX idx_activity_event_type ON ide_activity_logs(event_type);
 ```
 
+### 🗑️ 하이브리드 용량 상한선 및 조기 만료 (FIFO 클리닝)
+* 기본 보관 주기는 7일 TTL 정책을 따릅니다.
+* 전체 로그 데이터의 누적 용량(SQLite DB 파일 + Chroma DB 폴더 크기 합산)이 **하드 캡 상한선(예: 500MB)**을 초과하는지 지속적으로 모니터링합니다.
+* 단기간 로깅 폭증으로 7일 이내에 상한선에 도달할 경우, 가장 오래된 로그부터 순차적으로(100건 단위) 밀어내며 삭제(FIFO)하여 홈서버 용량 폭발을 방지합니다.
+* SQLite에서 삭제된 로그 레코드 ID는 Chroma DB 벡터 청크 삭제 작업에도 동기화되어 고아 데이터(Orphan Data)를 방지합니다.
+
 ---
 
 ## 🧠 2. 비정형 벡터 데이터베이스: Chroma DB

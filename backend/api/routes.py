@@ -76,11 +76,39 @@ async def upload_log(
     # 3. Chroma DB 임베딩 적재 (백그라운드 태스크)
     background_tasks.add_task(run_chroma_pipeline, log_id, data)
     
+    # 4. 용량 상한선 및 TTL 모니터링 (백그라운드 태스크)
+    background_tasks.add_task(run_capacity_check_pipeline)
+    
     return {
         "status": "success",
         "processed_records": 1,
         "log_id": log_id
     }
+
+def run_capacity_check_pipeline():
+    from backend.db.sqlite_handler import get_total_db_size_mb, cleanup_old_logs, cleanup_ttl_logs
+    from backend.db.chroma_handler import delete_vectors_by_log_ids
+    
+    try:
+        # 1. 먼저 7일 TTL 클리닝 수행
+        ttl_deleted_ids = cleanup_ttl_logs()
+        if ttl_deleted_ids:
+            delete_vectors_by_log_ids(ttl_deleted_ids)
+            
+        # 2. 용량 상한선(Hard Cap) 체크 (500MB)
+        max_mb = 500.0
+        while True:
+            current_mb = get_total_db_size_mb()
+            if current_mb > max_mb:
+                logger.info(f"Hard Cap 초과 (현재: {current_mb:.2f}MB / 최대: {max_mb}MB). FIFO 클리닝 시작...")
+                fifo_deleted_ids = cleanup_old_logs(limit=100)
+                if not fifo_deleted_ids:
+                    break
+                delete_vectors_by_log_ids(fifo_deleted_ids)
+            else:
+                break
+    except Exception as e:
+        logger.error(f"용량 체크 파이프라인 에러: {e}")
 
 @router.post("/chat", status_code=status.HTTP_200_OK)
 async def chat_with_logmon(

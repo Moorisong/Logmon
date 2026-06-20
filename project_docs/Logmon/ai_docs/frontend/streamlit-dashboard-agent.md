@@ -5,8 +5,8 @@
 ---
 
 ## 📝 1. 연동 기획 명세 ([Logmon-ui-specification.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/frontend/Logmon-ui-specification.md))
-* **디자인 테마**: Pastel Tone, 뉴모피즘(레트로 엠보싱) 스타일 구현.
-* **레이아웃**: Sidebar Console (경로 A 수동 업로드, 경로 B 설치 가이드) + Right Column (대시보드 메트릭, 트렌드 차트, 챗 인터페이스).
+* **디자인 테마**: Trendy Pastel Tone, 뉴모피즘(레트로 엠보싱) 스타일 구현. 너무 촌스럽지 않은 세련된 입체감 강조.
+* **레이아웃**: 단일 메인 대시보드 구조 (Single-Track). 사이드바 완전 제거. 상단 타이틀 옆에 설치하기 버튼 배치. 하단에 RAG 챗 인터페이스 구성.
 * **데이터 교환**: SQLite 직접 마운트를 금지하며, 오직 REST API (`BACKEND_URL`)를 통해서만 수행.
 
 ---
@@ -33,18 +33,22 @@ frontend/
 * Streamlit의 기본 테마를 무력화하고 엠보싱 스타일을 주입하기 위해 `app.py` 최상단에서 `style.css` 파일을 읽어 `st.markdown(..., unsafe_allow_html=True)` 형태로 강제 바인딩합니다.
 * 사이드바 배경색, 메인 컨테이너 패딩, 엠보싱 카드 효과 클래스 등을 스타일 시트에 정의합니다.
 
-#### 2단계: Sidebar Console 구현
-* `st.sidebar` 컨텍스트 내부에 👾 `LogMon` 로고 렌더링.
-* **수동 업로드 위젯**: `st.file_uploader`를 사용하여 파일을 받고, 업로드 성공 시 API 헬퍼를 통해 `POST /api/logmon/upload`로 파일을 전송해 즉시 백엔드에서 파싱하게 합니다.
-* **설치 가이드 탭**: `st.tabs(["🍏 macOS / Linux", "🪟 Windows"])`를 생성하여 설치/제거 curl 및 powershell 명령 코드를 깔끔히 복사하도록 `st.code` 위젯을 각각 바인딩합니다.
+#### 2단계: 메인 타이틀 및 상단 컨트롤 영역 구현
+* `st.sidebar`는 완전히 배제하고 사용하지 않습니다. (사이드바 숨김 처리)
+* 화면 최상단에 `st.columns`를 활용하여 좌측에는 👾 `LogMon` 메인 타이틀과 소개를 배치하고, 우측에는 세련된 **'🚀 에이전트 설치하기'** 버튼(`st.page_link("pages/install.py")` 활용)을 배치하여 클릭 시 설치 전용 페이지로 이동하도록 합니다.
 
-#### 3단계: Right Column - 대시보드 및 챗봇 인터페이스
-1. **상단 요약 (에이전트 가동 상태 메트릭)**: `st.columns(3)`를 생성한 후 메트릭 컴포넌트를 호출합니다. 백엔드(`GET /api/logmon/stats`)에서 가공하여 반환한 통계 정보를 엠보싱 효과 카드 내에 표현합니다.
+#### 3단계: 대시보드 메트릭 및 챗봇 인터페이스
+1. **상단 요약 (에이전트 가동 상태 메트릭)**: 타이틀 하단에 `st.columns(3)`를 생성한 후 메트릭 컴포넌트를 호출합니다. 백엔드(`GET /api/logmon/stats`)에서 가공하여 반환한 통계 정보를 엠보싱 효과 카드 내에 표현합니다.
    * **가동 시간**: 최초 수집일 이후 경과일 (예: "📅 에이전트 가동: 12일째")
    * **누적 데이터**: 에이전트를 통해 수집된 누적 로그 라인 수/바이트 크기 (예: "📦 에이전트 자동 수집: 총 14,500라인 (2.4 MB)")
    * **동기화 상태**: 가장 마지막으로 로그가 들어온 시각 (예: "🔄 최근 동기화: 3분 전 (정상)")
 2. **시각화 차트**: Altair 또는 Plotly를 활용하여 부드러운 파스텔 세이지 그린 `#A3C1AD` 컬러를 메인으로 채택한 트렌드 그래프를 렌더링합니다.
 3. **챗 인터페이스**: `st.chat_message` 구조를 래핑하여 둥근 형태가 아닌 각진 사각형 모양과 파스텔 피치/세이지 그린 배경색 CSS를 결합해 대화 내역을 표기하고, 맨 하단에 `st.chat_input`을 단단하게 고정합니다.
+
+#### 4단계: 설치 가이드 페이지 연동 (pages/install.py)
+* `frontend/pages/install.py` 파일을 생성하고 메인 앱과 동일한 뉴모피즘 `style.css`를 주입합니다.
+* `st.page_link("app.py", label="⬅️ 메인 대시보드로 돌아가기")`를 통해 뒤로가기 동선을 확보합니다.
+* 엠보싱 카드 내부에 `st.tabs(["🍏 macOS / Linux", "🪟 Windows"])`를 선언하고, 각 탭 내부에 `st.code` 위젯으로 설치용 Curl 및 PowerShell 스크립트를 세련되게 노출합니다.
 
 ---
 

@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import streamlit as st
-from frontend.utils.api_client import fetch_stats, send_chat, upload_log, BACKEND_URL, LOGMON_API_KEY
+from frontend.utils.api_client import fetch_stats, send_chat, BACKEND_URL, LOGMON_API_KEY
 from frontend.utils.chart_renderer import render_trend_chart
 
 # 1. 페이지 셋업 및 CSS 주입
-st.set_page_config(page_title="LogMon Dashboard", page_icon="👾", layout="wide")
+st.set_page_config(page_title="LogMon Dashboard", page_icon="👾", layout="wide", initial_sidebar_state="collapsed")
 
 def load_css():
     css_path = os.path.join(os.path.dirname(__file__), "assets", "style.css")
@@ -18,44 +18,18 @@ def load_css():
 
 load_css()
 
-# 2. 사이드바 (로고, 수동 업로드, 설치 가이드)
-with st.sidebar:
-    st.markdown("<div class='sidebar-title'>LogMon 👾</div>", unsafe_allow_html=True)
-    
-    st.subheader("📁 수동 업로드")
-    uploaded_file = st.file_uploader("IDE 텍스트 로그 파일 선택", type=["txt", "log"])
-    if uploaded_file is not None:
-        if st.button("백엔드로 전송"):
-            with st.spinner("업로드 중..."):
-                success = upload_log(uploaded_file.read(), uploaded_file.name)
-                if success:
-                    st.success("적재 완료!")
-    
-    st.divider()
-    st.subheader("🚀 에이전트 자동 설치")
-    st.caption("터미널에 붙여넣어 에이전트를 설치하세요.")
-    
-    # 보안 마스킹 처리 
-    masked_key = "********"
-    # 도메인 노출을 원치 않을 수 있으므로 설치 스크립트 도메인 표시 여부는 UI적으로 마스킹하지 않고 온전하게 노출시킬 수도 있으나,
-    # 사용자 요구사항에 "해당 주소와 API Key는 마스킹 처리하고 버튼 누를때만 복사되도록" 이라는 보안 요건이 있으므로 st.code는 보안상 그대로 노출하되
-    # UI Text로 먼저 마스킹된 버전을 보여줄 수 있습니다. Streamlit의 st.code 자체가 클립보드 복사를 지원함.
-    
-    mac_cmd = f"curl -sL {BACKEND_URL}/api/logmon/static/install-agent.sh | bash"
-    win_cmd = f"Invoke-WebRequest -Uri {BACKEND_URL}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\install-agent.ps1"
-    
-    tab1, tab2 = st.tabs(["🍏 Mac/Linux", "🪟 Windows"])
-    with tab1:
-        st.write("`BACKEND_URL: ********`")
-        st.code(mac_cmd, language="bash")
-    with tab2:
-        st.write("`BACKEND_URL: ********`")
-        st.code(win_cmd, language="powershell")
+# 2. 메인 타이틀 및 상단 컨트롤 영역
+col_logo, col_title, col_btn = st.columns([0.1, 0.7, 0.2])
+with col_logo:
+    st.image("frontend/assets/logo.png", width=80)
+with col_title:
+    st.title("Welcome to LogMon")
+    st.markdown("로컬 개발 PC의 생산성과 오류 발생 트렌드를 시각화하고 과거 이력에 대해 질문하세요.")
+with col_btn:
+    st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+    st.page_link("pages/install.py", label="에이전트 설치하기", icon="🚀", use_container_width=True)
 
-# 3. 메인 대시보드 영역
-st.title("Welcome to LogMon 👾")
-st.markdown("로컬 개발 PC의 생산성과 오류 발생 트렌드를 시각화하고 과거 이력에 대해 질문하세요.")
-
+# 3. 메인 대시보드 스코어 카드 영역
 stats = fetch_stats()
 
 import datetime
@@ -104,6 +78,16 @@ with col3:
         <div class='neumorphic-value' style='font-size: 1.1rem;'>🔄 최근 동기화: {sync_str}</div>
     </div>
     """, unsafe_allow_html=True)
+
+current_db_mb = stats.get('current_db_mb', 0.0)
+max_db_mb = stats.get('max_db_mb', 500.0)
+usage_ratio = current_db_mb / max_db_mb if max_db_mb > 0 else 0
+
+st.markdown("<br/>", unsafe_allow_html=True)
+st.progress(min(usage_ratio, 1.0), text=f"현재 저장 공간 사용량: {current_db_mb:.1f}MB / {max_db_mb}MB ({usage_ratio*100:.1f}%)")
+
+if usage_ratio >= 0.9:
+    st.warning("🚨 용량 한도 초과(또는 임박)로 인해 오래된 로그부터 자동 정리 중입니다.")
 
 st.subheader("최근 7일 수집 트렌드")
 render_trend_chart(stats.get("trend_7d", []))

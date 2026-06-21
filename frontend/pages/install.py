@@ -2,7 +2,6 @@ import os
 import streamlit as st
 from frontend.utils.api_client import BACKEND_URL
 from frontend.utils.image_helper import get_base64_image
-import streamlit.components.v1 as components
 
 # 1. 페이지 셋업 및 CSS 주입
 st.set_page_config(page_title="Install LogMon Agent", layout="wide", initial_sidebar_state="collapsed")
@@ -18,6 +17,32 @@ load_css()
 # 이미지 에셋 로드 (Base64)
 logo_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
 data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
+
+# [★파이썬 기반 동적 주소 추출] 버전을 전혀 타지 않는 안전한 파이썬 방식으로 호스트 추출
+current_host = BACKEND_URL  # 기본값 세팅
+try:
+    # Streamlit 내부 쿼리 파라미터나 헤더 컨텍스트가 존재할 때 안전하게 추출 시도
+    if hasattr(st, "context") and hasattr(st.context, "headers"):
+        current_host = st.context.headers.get("host", BACKEND_URL)
+    else:
+        # 구버전 세팅일 경우 안전하게 서버 환경변수나 BACKEND_URL 기반으로 가공
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        ctx = get_script_run_ctx()
+        if ctx:
+            # 외부망에서 유저가 찌르고 들어온 포트포워딩 주소를 동적으로 파싱하기 위한 안전한 폴백
+            current_host = BACKEND_URL
+except Exception:
+    current_host = BACKEND_URL
+
+# 유저 접속 주소에 맞게 외부 백엔드 포트(3008) 매핑
+if "localhost" in current_host or "127.0.0.1" in current_host:
+    base_external_url = "http://localhost:3008"
+elif ":" in current_host:
+    # 예: 125.190.25.48:3007 -> 외부 포트 3008로 변경
+    base_external_url = f"http://{current_host.split(':')[0]}:3008"
+else:
+    # 도메인 접속 시
+    base_external_url = f"http://{current_host}/api"
 
 # 2. 뒤로 가기 버튼 (좌측 상단에 배치, 버튼 스타일 적용)
 st.markdown('''
@@ -40,72 +65,22 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 (자바스크립트 동적 주소 추출 마법 컴포넌트)
+# 4. 설치 안내 콘텐츠 (순수 파이썬 문자열 렌더링으로 롤백!)
 with st.container(border=True):
+    mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash"
+    win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\\install-agent.ps1"
+
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
-
-    # 자바스크립트가 브라우저 주소창의 IP를 그대로 훔쳐와서 버튼을 만들어주는 템플릿
-    universal_html_template = """
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin-bottom: 15px;">
-            <code id="cmd-text" style="display:block; padding: 12px; background: #0F172A; color: #38BDF8; border-radius: 6px; font-size: 14px; word-break: break-all;">
-                주소를 계산 중입니다...
-            </code>
-            <button id="copy-btn" style="
-                background: linear-gradient(135deg, #3B82F6, #2563EB); 
-                color: white; border: none; padding: 10px 18px; margin-top: 10px;
-                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
-                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
-            ">
-                📋 명령어 복사하기
-            </button>
-        </div>
-        <script>
-            // 브라우저 주소창에서 현재 도메인/IP 추출 (예: 125.190.25.48:3007 또는 localhost:3007)
-            const currentHost = window.location.host;
-            let baseExternalUrl = "";
-            
-            if (currentHost.includes(":")) {
-                // 포트가 있으면 (3007) -> 백엔드 외부 포트인 3008로 변경
-                baseExternalUrl = "http://" + currentHost.split(":")[0] + ":3008";
-            } else {
-                // 도메인이면 (/api 구조로 변경)
-                baseExternalUrl = "http://" + currentHost + "/api";
-            }
-
-            // OS 타입에 따라 명령어 생성
-            const isWin = "IS_WINDOWS" === "true";
-            const finalCmd = isWin 
-                ? `Invoke-WebRequest -Uri ${baseExternalUrl}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\\\\install-agent.ps1`
-                : `curl -sL ${baseExternalUrl}/api/logmon/static/install-agent.sh | bash`;
-
-            const textEl = document.getElementById('cmd-text');
-            const btn = document.getElementById('copy-btn');
-            
-            textEl.innerText = finalCmd;
-
-            btn.addEventListener('click', () => {
-                navigator.clipboard.writeText(finalCmd).then(() => {
-                    const origText = btn.innerHTML;
-                    btn.innerHTML = "복사 완료! ✓";
-                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
-                    setTimeout(() => {
-                        btn.innerHTML = origText;
-                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
-                    }, 2000);
-                });
-            });
-        </script>
-    """
 
     with tab1:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 터미널에 복사하여 붙여넣으세요.**")
-        components.html(universal_html_template.replace("IS_WINDOWS", "false"), height=130)
+        st.code(mac_cmd, language="bash")
 
     with tab2:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
-        components.html(universal_html_template.replace("IS_WINDOWS", "true"), height=130)
+        st.code(win_cmd, language="powershell")
 
 # 5. 수동 파일 업로드 섹션
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
@@ -149,31 +124,28 @@ with st.container(border=True):
     
     tab_un_mac, tab_un_win = st.tabs(["macOS / Linux 제거", "Windows 제거"])
     
-    # 제거 주소를 브라우저 자바스크립트로 처리하는 템플릿
-    uninstall_html_template = """
-        <button id="copy-un-btn" style="
-            background: linear-gradient(135deg, #3B82F6, #2563EB); 
-            color: white; border: none; padding: 10px 18px; 
-            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
-        ">
-            📋 제거 명령어 복사하기
-        </button>
-        <script>
-            const currentHost = window.location.host;
-            let baseExternalUrl = currentHost.includes(":") 
-                ? "http://" + currentHost.split(":")[0] + ":3008" 
-                : "http://" + currentHost + "/api";
-            
-            const isWin = "IS_WINDOWS" === "true";
-            const unCmd = isWin
-                ? `Invoke-WebRequest -Uri ${baseExternalUrl}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\\\uninstall-agent.ps1`
-                : `curl -sL ${baseExternalUrl}/api/logmon/static/uninstall-agent.sh | bash`;
-
-            const btn = document.getElementById('copy-un-btn');
+    with tab_un_mac:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
+        st.code("curl -sL ****** | bash", language="bash")
+        
+        real_mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/uninstall-agent.sh | bash"
+        
+        import streamlit.components.v1 as components
+        mac_html_template = """
+            <button id="copy-mac-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; border: none; padding: 10px 18px; 
+                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-mac-btn');
             btn.addEventListener('click', () => {
-                navigator.clipboard.writeText(unCmd).then(() => {
+                navigator.clipboard.writeText("REAL_MAC_CMD").then(() => {
                     const origText = btn.innerHTML;
                     btn.innerHTML = "제거 명령어 복사 완료! ✓";
                     btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
@@ -183,17 +155,40 @@ with st.container(border=True):
                     }, 2000);
                 });
             });
-        </script>
-    """
-
-    with tab_un_mac:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
-        st.code("curl -sL ****** | bash", language="bash")
-        components.html(uninstall_html_template.replace("IS_WINDOWS", "false"), height=60)
+            </script>
+        """
+        components.html(mac_html_template.replace("REAL_MAC_CMD", real_mac_cmd), height=60)
         
     with tab_un_win:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 관리자 권한의 PowerShell 창에서 복사 버튼을 클릭하여 실행하십시오.**")
         st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
-        components.html(uninstall_html_template.replace("IS_WINDOWS", "true"), height=60)
+        
+        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        
+        win_html_template = """
+            <button id="copy-win-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; border: none; padding: 10px 18px; 
+                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-win-btn');
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText("REAL_WIN_CMD").then(() => {
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
+                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
+                    }, 2000);
+                });
+            });
+            </script>
+        """
+        components.html(win_html_template.replace("REAL_WIN_CMD", real_win_cmd), height=60)

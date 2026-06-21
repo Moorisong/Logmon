@@ -86,8 +86,7 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     
     # 1. 트레이스 스타일 검증
     assert trace.line.width == 3
-    assert trace.line.shape == "spline"
-    assert trace.line.smoothing == 1.3
+    assert trace.line.shape == "linear"
     assert trace.marker.size == 8
     assert trace.marker.symbol == "circle"
     assert trace.marker.line.color == "#FFFFFF"
@@ -101,7 +100,7 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     assert fig.layout.margin.r == 40
     assert fig.layout.margin.t == 50
     assert fig.layout.margin.b == 20
-    assert fig.layout.height == 250
+    assert fig.layout.height == 320
     
     # 3. 범례(Legend) 스타일 검증
     assert fig.layout.showlegend is True
@@ -114,6 +113,7 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     assert fig.layout.legend.font.color == "#64748B"
     
     # 4. 축(Axis) 스타일 검증
+    assert fig.layout.xaxis.type == "category"
     assert fig.layout.xaxis.showgrid is False
     assert fig.layout.xaxis.zeroline is False
     assert fig.layout.xaxis.color == "#64748B"
@@ -123,4 +123,36 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     assert fig.layout.yaxis.gridcolor == "#F1F5F9"
     assert fig.layout.yaxis.zeroline is False
     assert fig.layout.yaxis.color == "#64748B"
+
+@patch("utils.chart_renderer.st.plotly_chart")
+@patch("utils.chart_renderer.st.markdown")
+def test_render_trend_chart_spike_handling_and_clipping_prevention(mock_st_markdown, mock_st_plotly_chart):
+    # 0건에서 갑자기 15건으로 튀어 올라 spline 보간 시 언더슈트가 우려되는 실제 데이터를 주입
+    trend_data = [
+        {"date": "2026-06-17", "count": 0},
+        {"date": "2026-06-18", "count": 0},
+        {"date": "2026-06-19", "count": 0},
+        {"date": "2026-06-20", "count": 0},
+        {"date": "2026-06-21", "count": 15}
+    ]
+    render_trend_chart(trend_data)
+    
+    assert mock_st_plotly_chart.called
+    fig = mock_st_plotly_chart.call_args[0][0]
+    trace = fig.data[0]
+    
+    # 1. 급격한 기울기 변화 시 언더슈트(처짐)를 원천 차단하기 위해 linear 꺾은선으로 렌더링 검증
+    assert trace.line.shape == "linear"
+    
+    # 2. X축 날짜 해석 오작동을 차단하기 위한 카테고리 타입 지정 검증
+    assert fig.layout.xaxis.type == "category"
+    assert list(fig.layout.xaxis.range) == [-0.5, 4.5] # 5일치 데이터이므로 [-0.5, 4.5] 여야 함
+    
+    # 3. Y축 마진에 따른 데이터 레이블 잘림 방지 범위 검증
+    # 최댓값 15에 대해 45% 마진을 주어 int(15 * 1.45) + 1 = 22이 Y축 상한선이어야 함
+    assert list(fig.layout.yaxis.range) == [0, 22]
+    
+    # 4. 차트 가독성 확장을 위해 키운 height=320 검증
+    assert fig.layout.height == 320
+
 

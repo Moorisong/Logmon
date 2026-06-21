@@ -31,8 +31,7 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
         line=dict(
             color="#6366F1",  # 인디고 블루
             width=3,
-            shape="spline",   # 부드러운 곡선 효과
-            smoothing=1.3
+            shape="linear"    # spline 보간 시 갑자기 솟구칠 때 X축 밑으로 처지는 언더슈트 현상을 원천 방지
         ),
         marker=dict(
             size=8,
@@ -69,13 +68,14 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=40, r=40, t=50, b=20),
         xaxis=dict(
+            type="category",  # X축을 강제로 카테고리형으로 다뤄 날짜 파싱 오작동을 방지
             showgrid=False,
             zeroline=False,
             color="#64748B",
             range=[-0.5, len(dates) - 0.5]
         ),
         yaxis=yaxis_config,
-        height=250,
+        height=320,  # 세로 배경 영역을 넉넉히 길게 키움
         showlegend=True,
         legend=dict(
             orientation="h",

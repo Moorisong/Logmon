@@ -65,7 +65,7 @@ async def get_install_script():
     primary_key = allowed_keys.split(",")[0].strip() 
     
     # 가비아 서브도메인을 베이스 URL로 고정
-    server_url = "http://logmon.haroo.site" 
+    server_url = "https://logmon.haroo.site" 
 
     # 3. 스크립트 내부의 기본 주석/더미 설정을 진짜 서버 정보로 동적 치환(Replace)
     content = content.replace('export API_KEY="default_dev_key"', f'export API_KEY="{primary_key}"')

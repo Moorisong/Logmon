@@ -1,11 +1,26 @@
+import os
 import pytest
 import respx
 import httpx
 from unittest.mock import patch
 
+# --- 테스트 환경 강제 분리 ---
+os.environ["LOGMON_ENV"] = "test"
+os.environ["LOGMON_DB_DIR"] = "/tmp/logmon_test_llm_db"
+os.environ["LOGMON_CHROMA_DIR"] = "/tmp/logmon_test_llm_chroma"
+
+from backend.db.connection import init_db, get_connection
 from backend.llm.client import generate_completion, OLLAMA_HOST, OLLAMA_NUM_THREAD
 from backend.llm.rag_engine import ask_rag_agent
 from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
+
+@pytest.fixture(autouse=True)
+def setup_and_teardown():
+    init_db()
+    yield
+    if os.path.exists(os.environ["LOGMON_DB_DIR"]):
+        import shutil
+        shutil.rmtree(os.environ["LOGMON_DB_DIR"], ignore_errors=True)
 
 # 1. 비동기 HTTP 클라이언트 Mock 테스트 (respx 활용)
 @pytest.mark.asyncio
@@ -85,3 +100,54 @@ async def test_ask_rag_agent_empty_context(mock_generate, mock_query):
     prompt_sent = mock_generate.call_args[0][0]
     # 빈 컨텍스트 방어 문구가 들어갔는지 확인
     assert "관련된 과거 로그 컨텍스트가 없습니다." in prompt_sent
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_connection_error_dynamic_mock_fallback():
+    """서버 다운 상황에서 LOGMON_ENV가 test가 아닐 때 실제 SQLite 로그를 이용한 동적 모의 답변 생성 테스트"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    
+    respx.post(endpoint).mock(side_effect=httpx.ConnectError("Connection refused"))
+    
+    # 임시로 LOGMON_ENV를 dev로 바꿨다가 원복
+    original_env = os.environ.get("LOGMON_ENV")
+    os.environ["LOGMON_ENV"] = "dev"
+    
+    try:
+        from backend.db.sqlite_handler import insert_activity_log
+        mock_log = {
+            "user_key": "dev",  # LOGMON_ENV가 dev이고 API Key 검증을 직접 하지 않는 경로이므로 매핑될 수 있는 값이나 일반 문자열
+            "timestamp": "2026-06-21 12:00:00",
+            "source_tool": "VSCode",
+            "event_type": "ERROR",
+            "task_name": "Build",
+            "duration_seconds": 10,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "raw_message": "Exception: Connection refused in db.py",
+            "has_code_block": 0
+        }
+        insert_activity_log(mock_log)
+
+        # DB 세팅을 모의하기 위해 context와 question이 포함된 프롬프트 작성
+        prompt = """당신은 어시스턴트입니다.
+[과거 로그 컨텍스트]
+관련된 과거 로그 컨텍스트가 없습니다.
+
+[사용자 질문]
+오늘 무슨 에러 있었어?
+
+[답변]"""
+        result = await generate_completion(prompt)
+        
+        # 동적 모의 응답이 생성되었는지 확인
+        assert "안녕하세요!" in result
+        assert "실제 저장된 로그 데이터" in result
+        assert "오늘" in result or "과거" in result
+    finally:
+        if original_env is not None:
+            os.environ["LOGMON_ENV"] = original_env
+        else:
+            del os.environ["LOGMON_ENV"]
+

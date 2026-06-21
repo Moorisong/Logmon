@@ -66,7 +66,6 @@ async def test_llm_client_connection_error_fallback():
     result = await generate_completion("서버 다운 질문")
     assert result == ERROR_FALLBACK_MESSAGE
 
-# 2. RAG 엔진 템플릿 주입 통합 테스트
 @pytest.mark.asyncio
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
@@ -78,29 +77,12 @@ async def test_ask_rag_agent_with_context(mock_generate, mock_query):
     answer = await ask_rag_agent("도커 에러 어떻게 풀었지?", "test_user_key")
     
     assert answer == "RAG 처리된 AI 응답"
-    mock_query.assert_called_once_with(query_text="도커 에러 어떻게 풀었지?", n_results=3, user_key="test_user_key")
+    mock_query.assert_called_once_with(query_text="도커 에러 어떻게 풀었지?", n_results=10, user_key="test_user_key", event_type="ERROR")
     
     # 생성된 프롬프트 검증
     prompt_sent = mock_generate.call_args[0][0]
     assert "과거 로그 내용 1" in prompt_sent
     assert "도커 에러 어떻게 풀었지?" in prompt_sent
-
-@pytest.mark.asyncio
-@patch('backend.llm.rag_engine.query_vectors')
-@patch('backend.llm.rag_engine.generate_completion')
-async def test_ask_rag_agent_empty_context(mock_generate, mock_query):
-    # Chroma DB에서 문서를 찾지 못한 경우 (빈 리스트)
-    mock_query.return_value = [[]]
-    mock_generate.return_value = "RAG 빈 컨텍스트 AI 응답"
-    
-    answer = await ask_rag_agent("처음 보는 에러?", "test_user_key")
-    
-    assert answer == "RAG 빈 컨텍스트 AI 응답"
-    
-    prompt_sent = mock_generate.call_args[0][0]
-    # 빈 컨텍스트 방어 문구가 들어갔는지 확인
-    assert "관련된 과거 로그 컨텍스트가 없습니다." in prompt_sent
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -151,3 +133,58 @@ async def test_llm_client_connection_error_dynamic_mock_fallback():
         else:
             del os.environ["LOGMON_ENV"]
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_timeout_dynamic_mock_fallback():
+    """타임아웃 에러 상황에서 SQLite 로직으로 누수 없이 흐르는지 검증 (Bug Fix Test)"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    respx.post(endpoint).mock(side_effect=httpx.TimeoutException("Timeout"))
+    
+    original_env = os.environ.get("LOGMON_ENV")
+    os.environ["LOGMON_ENV"] = "dev"
+    try:
+        from backend.db.sqlite_handler import insert_activity_log
+        insert_activity_log({"user_key": "dev", "timestamp": "2026-06-21 12:00:00", "source_tool": "VSCode", "event_type": "ERROR", "raw_message": "Timeout trigger"})
+        
+        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n오늘 무슨 일?\n[답변]"
+        result = await generate_completion(prompt)
+        assert "안녕하세요!" in result
+        assert "실제 저장된 로그 데이터" in result
+    finally:
+        if original_env is not None: os.environ["LOGMON_ENV"] = original_env
+        else: del os.environ["LOGMON_ENV"]
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_llm_client_general_exception_dynamic_mock_fallback():
+    """알 수 없는 에러 상황에서 SQLite 로직으로 누수 없이 흐르는지 검증 (Bug Fix Test)"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    respx.post(endpoint).mock(side_effect=Exception("Unknown Error"))
+    
+    original_env = os.environ.get("LOGMON_ENV")
+    os.environ["LOGMON_ENV"] = "dev"
+    try:
+        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n알 수 없는 에러\n[답변]"
+        result = await generate_completion(prompt)
+        assert "안녕하세요!" in result
+    finally:
+        if original_env is not None: os.environ["LOGMON_ENV"] = original_env
+        else: del os.environ["LOGMON_ENV"]
+
+@pytest.mark.asyncio
+async def test_guardrail_routing():
+    """인풋 가드레일 라우팅 테스트 (비정상 입력 차단)"""
+    from backend.llm.guardrail import check_guardrail
+    assert check_guardrail("안녕") is not None
+    assert check_guardrail("너 바보야?") is not None
+    assert check_guardrail("도커 에러가 왜 나지?") is None
+
+@pytest.mark.asyncio
+async def test_rag_empty_context_handling():
+    """Empty Context 발생 시 LLM을 호출하지 않고 방어하는지 검증"""
+    from backend.llm.rag_engine import ask_rag_agent
+    with patch('backend.llm.rag_engine.query_vectors', return_value=[]):
+        with patch('backend.llm.rag_engine.generate_completion') as mock_llm:
+            answer = await ask_rag_agent("에러 찾아줘", "test_key")
+            assert answer == "최근 기록된 작업 로그가 존재하지 않습니다."
+            mock_llm.assert_not_called()

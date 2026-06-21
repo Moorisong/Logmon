@@ -39,20 +39,19 @@ async def generate_completion(prompt: str) -> str:
             data = response.json()
             return data.get("response", "")
             
-    except httpx.TimeoutException:
-        logger.error("Ollama API 타임아웃 발생 (N95 과부하 또는 모델 로딩 지연)")
-        return ERROR_FALLBACK_MESSAGE
-    except httpx.RequestError as e:
-        logger.error(f"Ollama API 연결 실패 (서버 다운): {e}")
-        # 로컬 개발 환경(LOGMON_ENV가 test가 아님)일 경우 대화 테스트 흐름을 매끄럽게 만들기 위해 모의 응답 시뮬레이션 적용
+    except (httpx.TimeoutException, httpx.RequestError, Exception) as e:
+        if isinstance(e, httpx.TimeoutException):
+            logger.error("Ollama API 타임아웃 발생 (N95 과부하 또는 모델 로딩 지연)")
+        elif isinstance(e, httpx.RequestError):
+            logger.error(f"Ollama API 연결 실패 (서버 다운): {e}")
+        else:
+            logger.error(f"Ollama API 알 수 없는 에러: {e}")
+            
         if ("localhost" in OLLAMA_HOST or "127.0.0.1" in OLLAMA_HOST) and os.getenv("LOGMON_ENV") != "test":
-            logger.info("Ollama API 미작동으로 인한 로컬 모의 분석 텍스트 출력")
+            logger.info("Ollama API 장애 발생. 로컬 모의 분석 텍스트 출력 (SQLite Fallback)")
             context, question = parse_prompt(prompt)
             rows = query_sqlite_logs(question or prompt)
             return generate_simulated_response(question or prompt, rows)
-        return ERROR_FALLBACK_MESSAGE
-    except Exception as e:
-        logger.error(f"Ollama API 알 수 없는 에러: {e}")
         return ERROR_FALLBACK_MESSAGE
 
 

@@ -102,6 +102,7 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
     user_key = data.get("user_key")
     timestamp = data.get("timestamp")
     source_tool = data.get("source_tool", "UNKNOWN_TOOL")
+    event_type = data.get("event_type", "INFO")
     
     chunks = chunk_text(raw_message, chunk_size=800, overlap=100)
     
@@ -126,6 +127,7 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
                 "user_key": user_key,
                 "timestamp": timestamp,
                 "source_tool": source_tool,
+                "event_type": event_type,
                 "chunk_index": i
             })
             
@@ -148,7 +150,7 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
             logger.error(f"Chroma DB 컬렉션 add 실패: {e}")
             raise
 
-def query_vectors(query_text: str, n_results: int = 3, user_key: str = "") -> List[List[str]]:
+def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event_type: str = "") -> List[List[str]]:
     """
     사용자의 질문 텍스트를 임베딩하여 Chroma DB에서 유사도가 높은 문서(청크)를 조회합니다.
     user_key 메타데이터 필터를 통해 타인의 데이터 조회를 원천 차단합니다.
@@ -164,8 +166,12 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "") -> Li
         collection = get_collection()
         
         where_filter = {}
-        if user_key:
+        if user_key and event_type:
+            where_filter = {"$and": [{"user_key": user_key}, {"event_type": event_type}]}
+        elif user_key:
             where_filter = {"user_key": user_key}
+        elif event_type:
+            where_filter = {"event_type": event_type}
             
         results = collection.query(
             query_embeddings=[query_embedding],

@@ -22,6 +22,7 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
         mode="lines+markers+text",
         text=[f"{c:,}건" for c in counts],
         textposition="top center",
+        cliponaxis=False,
         textfont=dict(
             color="#4F46E5",
             size=9  # 작고 귀여운 사이즈
@@ -59,18 +60,19 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
         yaxis_config["dtick"] = 1  # 최대값이 작을 때는 1단위로 눈금 강제 지정
         yaxis_config["range"] = [0, 5]  # 마진 여유를 두어 텍스트 레이블 잘림 방지
     else:
-        # 최대값의 18% 마진을 위쪽에 더 주어 데이터 레이블이 잘리는 것을 방지
-        yaxis_config["range"] = [0, int(max_val * 1.18) + 1]
+        # 최대값의 45% 마진을 위쪽에 더 주어 데이터 레이블이 잘리는 것을 방지
+        yaxis_config["range"] = [0, int(max_val * 1.45) + 1]
         
     # 둥근 모서리 및 투명 배경
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=35, b=20),
+        margin=dict(l=40, r=40, t=50, b=20),
         xaxis=dict(
             showgrid=False,
             zeroline=False,
-            color="#64748B"
+            color="#64748B",
+            range=[-0.5, len(dates) - 0.5]
         ),
         yaxis=yaxis_config,
         height=250,

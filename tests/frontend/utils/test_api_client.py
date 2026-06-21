@@ -31,6 +31,7 @@ def test_fetch_stats_request_exception(mock_st_markdown, mock_requests_get):
     assert result["total_logs"] == 0
     assert result["today_tokens"] == 0
     assert result["is_online"] is False
+    assert result["is_agent_installed"] is False
 
 @patch("utils.api_client.requests.get")
 def test_fetch_stats_success(mock_requests_get):
@@ -44,7 +45,8 @@ def test_fetch_stats_success(mock_requests_get):
         "uptime_days": 2,
         "total_lines": 100,
         "total_bytes": 1024,
-        "last_sync_time": "2026-06-21 12:00:00"
+        "last_sync_time": "2026-06-21 12:00:00",
+        "is_agent_installed": True
     }
     mock_requests_get.return_value = mock_response
     
@@ -54,6 +56,7 @@ def test_fetch_stats_success(mock_requests_get):
     assert result["is_online"] is True
     assert result["total_logs"] == 10
     assert result["total_lines"] == 100
+    assert result["is_agent_installed"] is True
 
 @patch("utils.api_client.requests.post")
 def test_send_chat_request_exception(mock_requests_post):

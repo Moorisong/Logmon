@@ -142,6 +142,14 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         metric_row = cursor.fetchone()
         
+        # 에이전트로부터 들어온 로그가 있는지 체크 (Manual Upload UI가 아닌 source_tool 로그가 존재하는지)
+        cursor.execute("""
+            SELECT COUNT(id) FROM ide_activity_logs 
+            WHERE user_key = ? AND source_tool != 'Manual Upload UI'
+        """, (user_key,))
+        agent_logs_count = cursor.fetchone()[0] or 0
+        is_agent_installed = agent_logs_count > 0
+        
         first_log = metric_row[0] if metric_row and metric_row[0] else None
         last_sync_time = metric_row[1] if metric_row and metric_row[1] else None
         total_lines = metric_row[2] if metric_row and metric_row[2] else 0
@@ -183,14 +191,15 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
             "total_bytes": total_bytes,
             "last_sync_time": last_sync_time,
             "current_db_mb": round(current_db_mb, 2),
-            "max_db_mb": max_db_mb
+            "max_db_mb": max_db_mb,
+            "is_agent_installed": is_agent_installed
         }
     except sqlite3.Error as e:
         logger.error(f"대시보드 통계 집계 중 에러 발생: {e}")
         return {
             "total_logs": 0, "today_tokens": 0, "has_code_ratio": 0.0, "trend_7d": [],
             "uptime_days": 0, "total_lines": 0, "total_bytes": 0, "last_sync_time": None,
-            "current_db_mb": 0.0, "max_db_mb": 500.0
+            "current_db_mb": 0.0, "max_db_mb": 500.0, "is_agent_installed": False
         }
     finally:
         conn.close()

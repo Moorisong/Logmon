@@ -41,13 +41,14 @@ def test_render_trend_chart_with_data(mock_st_markdown, mock_st_plotly_chart):
     assert trace.mode == "lines+markers+text"
     assert trace.line.color == "#6366F1"
     assert trace.marker.color == "#4F46E5"
+    assert trace.cliponaxis is False
     assert trace.fill == "tozeroy"
     assert list(trace.text) == ["5건", "10건"]
     assert fig.layout.yaxis.title.text is None
     assert fig.layout.yaxis.rangemode == "nonnegative"
     assert fig.layout.yaxis.tickformat == "d"
     assert fig.layout.yaxis.dtick is None  # 최댓값이 10이므로 dtick 설정은 제공하지 않음
-    assert list(fig.layout.yaxis.range) == [0, 12]  # 최댓값 10에 18% 마진 적용 (int(10*1.18)+1 = 12)
+    assert list(fig.layout.yaxis.range) == [0, 15]  # 최댓값 10에 45% 마진 적용 (int(10*1.45)+1 = 15)
     
     # read-only 설정을 위한 staticPlot 옵션 검증
     assert call_kwargs.get("use_container_width") is True
@@ -96,9 +97,9 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     # 2. 레이아웃 배경 및 여백 검증
     assert fig.layout.paper_bgcolor == "rgba(0,0,0,0)"
     assert fig.layout.plot_bgcolor == "rgba(0,0,0,0)"
-    assert fig.layout.margin.l == 20
-    assert fig.layout.margin.r == 20
-    assert fig.layout.margin.t == 35
+    assert fig.layout.margin.l == 40
+    assert fig.layout.margin.r == 40
+    assert fig.layout.margin.t == 50
     assert fig.layout.margin.b == 20
     assert fig.layout.height == 250
     
@@ -116,6 +117,7 @@ def test_render_trend_chart_strict_design_lock(mock_st_markdown, mock_st_plotly_
     assert fig.layout.xaxis.showgrid is False
     assert fig.layout.xaxis.zeroline is False
     assert fig.layout.xaxis.color == "#64748B"
+    assert list(fig.layout.xaxis.range) == [-0.5, 1.5]  # len(dates) = 2일 때 [-0.5, 1.5]
     
     assert fig.layout.yaxis.showgrid is True
     assert fig.layout.yaxis.gridcolor == "#F1F5F9"

@@ -92,7 +92,8 @@ def test_stats_api(mock_stats):
         "total_logs": 100,
         "today_tokens": 5000,
         "has_code_ratio": 25.5,
-        "trend_7d": []
+        "trend_7d": [],
+        "is_agent_installed": True
     }
     
     res = client.get("/api/logmon/stats", headers=headers)
@@ -101,3 +102,4 @@ def test_stats_api(mock_stats):
     assert data["total_logs"] == 100
     assert data["today_tokens"] == 5000
     assert data["has_code_ratio"] == 25.5
+    assert data["is_agent_installed"] is True

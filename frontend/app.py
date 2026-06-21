@@ -22,7 +22,11 @@ def load_css():
 
 load_css()
 
-# 2. 헤더 및 에이전트 설치 버튼 통합 렌더링 (동기화 영역과의 겹침 및 간섭 해결)
+# 2. 메인 대시보드 스코어 카드 데이터 패칭 (버튼 분기 렌더링을 위해 헤더 위로 이동)
+stats = fetch_stats()
+is_agent_installed = stats.get("is_agent_installed", False)
+
+# 3. 헤더 및 에이전트 설치 버튼 통합 렌더링 (동기화 영역과의 겹침 및 간섭 해결)
 col_logo_title, col_install_btn = st.columns([0.8, 0.2])
 
 with col_logo_title:
@@ -36,17 +40,22 @@ with col_logo_title:
 
 with col_install_btn:
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # 로고 타이틀과 수직 정렬을 맞추기 위한 상단 패딩
+    
+    if is_agent_installed:
+        btn_text = "에이전트 제거하기"
+        btn_link = "/install?mode=uninstall"
+    else:
+        btn_text = "에이전트 설치하기"
+        btn_link = "/install?mode=install"
+        
     st.markdown(
-        f'''<a href="/install" target="_self" style="text-decoration: none;">
+        f'''<a href="{btn_link}" target="_self" style="text-decoration: none;">
             <div class="install-btn">
-                에이전트 설치하기
+                {btn_text}
             </div>
         </a>''', 
         unsafe_allow_html=True
     )
-
-# 3. 메인 대시보드 스코어 카드 데이터 패칭
-stats = fetch_stats()
 
 # 에러 상태 여부 판단 (백엔드가 오프라인이고, 세션에 mock_stats가 없는 경우)
 is_error_state = not stats.get("is_online", True) and "mock_stats" not in st.session_state

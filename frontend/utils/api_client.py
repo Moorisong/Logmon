@@ -43,7 +43,8 @@ def fetch_stats() -> Dict[str, Any]:
             "total_lines": 0,
             "total_bytes": 0,
             "last_sync_time": None,
-            "is_online": False
+            "is_online": False,
+            "is_agent_installed": False
         }
 
 def send_chat(question: str) -> str:

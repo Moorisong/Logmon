@@ -100,3 +100,37 @@ def test_chroma_db_metadata_isolation_and_failure(mock_get_embedding):
         
     # 현재 코드 구조상 Exception을 continue로 잡아 넘기므로 폭파되지 않음
     assert success is True 
+
+def test_get_dashboard_stats_agent_installed_flag():
+    """get_dashboard_stats에서 수동 업로드와 에이전트 로그를 구분하여 is_agent_installed 플래그를 정확하게 집계하는지 검증"""
+    from backend.db.sqlite_handler import get_dashboard_stats
+    
+    user_key = "USER_TEST_STATS"
+    
+    # 1. 아무 로그도 없을 때 => False
+    stats_empty = get_dashboard_stats(user_key)
+    assert stats_empty["is_agent_installed"] is False
+    
+    # 2. 수동 업로드 로그만 있을 때 => False
+    manual_data = {
+        "user_key": user_key,
+        "timestamp": "2026-06-20 12:00:00",
+        "source_tool": "Manual Upload UI",
+        "event_type": "MANUAL",
+        "raw_message": "수동 업로드 테스트 로그"
+    }
+    insert_activity_log(manual_data)
+    stats_manual = get_dashboard_stats(user_key)
+    assert stats_manual["is_agent_installed"] is False
+    
+    # 3. 에이전트 로그(예: VSCode)가 들어왔을 때 => True
+    agent_data = {
+        "user_key": user_key,
+        "timestamp": "2026-06-20 12:05:00",
+        "source_tool": "VSCode",
+        "event_type": "EDIT",
+        "raw_message": "에이전트 수집 테스트 로그"
+    }
+    insert_activity_log(agent_data)
+    stats_agent = get_dashboard_stats(user_key)
+    assert stats_agent["is_agent_installed"] is True 

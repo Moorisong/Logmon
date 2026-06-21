@@ -18,6 +18,8 @@ def render_chat_interface(is_error_state: bool, is_local: bool):
         if is_local:
             st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
             if st.button("🔌 목 데이터 주입", key="inject_mock_btn", use_container_width=True):
+                # 캐시 강제 비우기를 수행하여 mock_stats 주입이 즉시 반영되도록 함
+                st.cache_data.clear()
                 # 대시보드 전체(스코어카드 + 차트) 목 데이터 정의
                 st.session_state["mock_stats"] = {
                     "uptime_days": 5,

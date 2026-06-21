@@ -71,186 +71,201 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 3. 로고몬 아이콘 + 안내 문구
-st.markdown(f'''
-    <div style="display: flex; align-items: center; gap: 12px; margin-top: 15px; margin-bottom: 20px;">
-        <img src="data:image/png;base64,{logo_b64}" style="width: 36px; height: 36px; mix-blend-mode: multiply;">
-        <span style="font-size: 16px; font-weight: 600; color: #1E293B; line-height: 36px;">
-            터미널 환경에 맞게 아래 스크립트를 복사하여 실행하시면 LogMon 에이전트가 자동 설치됩니다.
-        </span>
-    </div>
-''', unsafe_allow_html=True)
+# 3. 진입 모드 판별 (st.query_params 기반)
+mode = st.query_params.get("mode", "install")
 
-# 4. 설치 안내 콘텐츠 상자 (★지저분한 변수 없는 원클릭 동적 세션 라우팅 기법★)
-with st.container(border=True):
-    tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
+if mode == "install":
+    # 4. 로고몬 아이콘 + 안내 문구
+    st.markdown(f'''
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 15px; margin-bottom: 20px;">
+            <img src="data:image/png;base64,{logo_b64}" style="width: 36px; height: 36px; mix-blend-mode: multiply;">
+            <span style="font-size: 16px; font-weight: 600; color: #1E293B; line-height: 36px;">
+                터미널 환경에 맞게 아래 스크립트를 복사하여 실행하시면 LogMon 에이전트가 자동 설치됩니다.
+            </span>
+        </div>
+    ''', unsafe_allow_html=True)
 
-    with tab1:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
+    # 5. 설치 안내 콘텐츠 상자
+    with st.container(border=True):
+        tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
+
+        with tab1:
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
+            
+            hidden_npx = "npx logmon-cli"
+            visible_npx = hidden_npx
+            
+            copy_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+            check_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+            
+            npx_html = f"""
+            <style>
+            #copy-npx-btn:hover {{
+                background-color: #CBD5E1 !important;
+                color: #1E293B !important;
+            }}
+            </style>
+            <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+                <span style="color: #0F172A; font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">{visible_npx}</span>
+                <button id="copy-npx-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="클립보드에 복사">{copy_svg}</button>
+            </div>
+            <script>
+            const copySvg = `{copy_svg}`;
+            const checkSvg = `{check_svg}`;
+            document.getElementById('copy-npx-btn').addEventListener('click', function() {{
+                navigator.clipboard.writeText(`{hidden_npx}`).then(() => {{
+                    this.innerHTML = checkSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                    setTimeout(() => {{ this.innerHTML = copySvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+                }});
+            }});
+            </script>
+            """
+            components.html(npx_html, height=70)
+            st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
+
+        with tab2:
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
+            
+            win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
+            visible_win = win_cmd_clean
+            
+            win_html = f"""
+            <style>
+            #copy-win-install-btn:hover {{
+                background-color: #CBD5E1 !important;
+                color: #1E293B !important;
+            }}
+            </style>
+            <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+                <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_win}</span>
+                <button id="copy-win-install-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="PowerShell 명령어 복사">{copy_svg}</button>
+            </div>
+            <script>
+            const copyWinSvg = `{copy_svg}`;
+            const checkWinSvg = `{check_svg}`;
+            document.getElementById('copy-win-install-btn').addEventListener('click', function() {{
+                navigator.clipboard.writeText(`{win_cmd_clean}`).then(() => {{
+                    this.innerHTML = checkWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                    setTimeout(() => {{ this.innerHTML = copyWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+                }});
+            }});
+            </script>
+            """
+            components.html(win_html, height=70)
+            st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
+
+    # 6. 수동 파일 업로드 섹션
+    st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown(f'''
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+                <img src="data:image/png;base64,{data_b64}" class="icon-img" style="width: 28px; height: 28px;">
+                <h3 style="margin: 0; font-size: 20px; font-weight: 700;">수동 파일 업로드</h3>
+            </div>
+        ''', unsafe_allow_html=True)
+
+        st.markdown("에이전트를 설치할 수 없는 환경이라면 직접 로그 파일을 업로드하실 수 있습니다.")
+
+        uploaded_file = st.file_uploader("로그 파일 선택", type=["txt", "log", "json", "md"], help="텍스트 기반 로그 파일을 업로드해주세요.", label_visibility="collapsed")
+
+        if uploaded_file is not None:
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            if st.button("업로드 전송", use_container_width=True):
+                from frontend.utils.api_client import upload_log
+                file_bytes = uploaded_file.read()
+                with st.spinner("파일을 분석하고 백엔드로 전송 중입니다..."):
+                    success = upload_log(file_bytes, uploaded_file.name)
+                if success:
+                    st.success("파일이 성공적으로 업로드 및 처리되었습니다!")
+
+elif mode == "uninstall":
+    # 7. 에이전트 제거 가이드 섹션
+    st.markdown(f'''
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 15px; margin-bottom: 20px;">
+            <img src="data:image/png;base64,{uninstall_b64}" style="width: 36px; height: 36px; mix-blend-mode: multiply;">
+            <span style="font-size: 16px; font-weight: 600; color: #1E293B; line-height: 36px;">
+                설치된 에이전트를 시스템에서 완전히 삭제하려면 아래 가이드를 따르십시오.
+            </span>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown(f'''
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+                <img src="data:image/png;base64,{uninstall_b64}" class="icon-img" style="width: 28px; height: 28px; mix-blend-mode: multiply;">
+                <h3 style="margin: 0; font-size: 20px; font-weight: 700;">에이전트 제거 가이드</h3>
+            </div>
+        ''', unsafe_allow_html=True)
+
+        tab_un_mac, tab_un_win = st.tabs(["macOS / Linux 제거", "Windows 제거"])
         
-        # 이제 인자 없이 npx logmon-cli 만으로 설치 가능 (부족한 설정은 대화형 입력 처리됨)
-        hidden_npx = "npx logmon-cli"
-        visible_npx = hidden_npx
-        
+        # 공통 복사 아이콘 SVG 정의
         copy_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
         check_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
-        
-        npx_html = f"""
-        <style>
-        #copy-npx-btn:hover {{
-            background-color: #CBD5E1 !important;
-            color: #1E293B !important;
-        }}
-        </style>
-        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
-            <span style="color: #0F172A; font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">{visible_npx}</span>
-            <button id="copy-npx-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="클립보드에 복사">{copy_svg}</button>
-        </div>
-        <script>
-        const copySvg = `{copy_svg}`;
-        const checkSvg = `{check_svg}`;
-        document.getElementById('copy-npx-btn').addEventListener('click', function() {{
-            navigator.clipboard.writeText(`{hidden_npx}`).then(() => {{
-                this.innerHTML = checkSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
-                setTimeout(() => {{ this.innerHTML = copySvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+
+        with tab_un_mac:
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            st.markdown("**1. 아래 제거 명령어를 복사하여 터미널에 실행하십시오.**")
+            
+            real_mac_cmd = "npx logmon-cli uninstall"
+            visible_un_mac = real_mac_cmd
+            
+            un_mac_html = f"""
+            <style>
+            #copy-un-mac-btn:hover {{
+                background-color: #CBD5E1 !important;
+                color: #1E293B !important;
+            }}
+            </style>
+            <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+                <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_mac}</span>
+                <button id="copy-un-mac-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
+            </div>
+            <script>
+            const copyUnMacSvg = `{copy_svg}`;
+            const checkUnMacSvg = `{check_svg}`;
+            document.getElementById('copy-un-mac-btn').addEventListener('click', function() {{
+                navigator.clipboard.writeText(`{real_mac_cmd}`).then(() => {{
+                    this.innerHTML = checkUnMacSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                    setTimeout(() => {{ this.innerHTML = copyUnMacSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+                }});
             }});
-        }});
-        </script>
-        """
-        components.html(npx_html, height=70)
-        st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
-
-    with tab2:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
-        
-        win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
-        visible_win = win_cmd_clean
-        
-        win_html = f"""
-        <style>
-        #copy-win-install-btn:hover {{
-            background-color: #CBD5E1 !important;
-            color: #1E293B !important;
-        }}
-        </style>
-        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
-            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_win}</span>
-            <button id="copy-win-install-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="PowerShell 명령어 복사">{copy_svg}</button>
-        </div>
-        <script>
-        const copyWinSvg = `{copy_svg}`;
-        const checkWinSvg = `{check_svg}`;
-        document.getElementById('copy-win-install-btn').addEventListener('click', function() {{
-            navigator.clipboard.writeText(`{win_cmd_clean}`).then(() => {{
-                this.innerHTML = checkWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
-                setTimeout(() => {{ this.innerHTML = copyWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+            </script>
+            """
+            components.html(un_mac_html, height=70)
+            st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
+            
+        with tab_un_win:
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            st.markdown("**1. 관리자 권한의 PowerShell 창에서 아래 명령어를 실행하십시오.**")
+            
+            real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+            visible_un_win = real_win_cmd
+            
+            un_win_html = f"""
+            <style>
+            #copy-un-win-btn:hover {{
+                background-color: #CBD5E1 !important;
+                color: #1E293B !important;
+            }}
+            </style>
+            <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+                <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_win}</span>
+                <button id="copy-un-win-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
+            </div>
+            <script>
+            const copyUnWinSvg = `{copy_svg}`;
+            const checkUnWinSvg = `{check_svg}`;
+            document.getElementById('copy-un-win-btn').addEventListener('click', function() {{
+                navigator.clipboard.writeText(`{real_win_cmd}`).then(() => {{
+                    this.innerHTML = checkUnWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                    setTimeout(() => {{ this.innerHTML = copyUnWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+                }});
             }});
-        }});
-        </script>
-        """
-        components.html(win_html, height=70)
-        st.markdown("<p style='font-size: 13.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 14.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
-
-# 5. 수동 파일 업로드 섹션
-st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
-
-with st.container(border=True):
-    st.markdown(f'''
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
-            <img src="data:image/png;base64,{data_b64}" class="icon-img" style="width: 28px; height: 28px;">
-            <h3 style="margin: 0; font-size: 20px; font-weight: 700;">수동 파일 업로드</h3>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    st.markdown("에이전트를 설치할 수 없는 환경이라면 직접 로그 파일을 업로드하실 수 있습니다.")
-
-    uploaded_file = st.file_uploader("로그 파일 선택", type=["txt", "log", "json", "md"], help="텍스트 기반 로그 파일을 업로드해주세요.", label_visibility="collapsed")
-
-    if uploaded_file is not None:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        if st.button("업로드 전송", use_container_width=True):
-            from frontend.utils.api_client import upload_log
-            file_bytes = uploaded_file.read()
-            with st.spinner("파일을 분석하고 백엔드로 전송 중입니다..."):
-                success = upload_log(file_bytes, uploaded_file.name)
-            if success:
-                st.success("파일이 성공적으로 업로드 및 처리되었습니다!")
-
-# 6. 에이전트 제거 가이드 섹션
-st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
-
-with st.container(border=True):
-    st.markdown(f'''
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
-            <img src="data:image/png;base64,{uninstall_b64}" class="icon-img" style="width: 28px; height: 28px; mix-blend-mode: multiply;">
-            <h3 style="margin: 0; font-size: 20px; font-weight: 700;">에이전트 제거 가이드</h3>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    st.markdown("설치된 에이전트를 시스템에서 완전히 삭제하려면 아래 가이드를 따르십시오.")
-    
-    tab_un_mac, tab_un_win = st.tabs(["macOS / Linux 제거", "Windows 제거"])
-    
-    with tab_un_mac:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 아래 제거 명령어를 복사하여 터미널에 실행하십시오.**")
-        
-        real_mac_cmd = "npx logmon-cli uninstall"
-        visible_un_mac = real_mac_cmd
-        
-        un_mac_html = f"""
-        <style>
-        #copy-un-mac-btn:hover {{
-            background-color: #CBD5E1 !important;
-            color: #1E293B !important;
-        }}
-        </style>
-        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
-            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_mac}</span>
-            <button id="copy-un-mac-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
-        </div>
-        <script>
-        const copyUnMacSvg = `{copy_svg}`;
-        const checkUnMacSvg = `{check_svg}`;
-        document.getElementById('copy-un-mac-btn').addEventListener('click', function() {{
-            navigator.clipboard.writeText(`{real_mac_cmd}`).then(() => {{
-                this.innerHTML = checkUnMacSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
-                setTimeout(() => {{ this.innerHTML = copyUnMacSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
-            }});
-        }});
-        </script>
-        """
-        components.html(un_mac_html, height=70)
-        
-    with tab_un_win:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 관리자 권한의 PowerShell 창에서 아래 명령어를 실행하십시오.**")
-        
-        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
-        visible_un_win = real_win_cmd
-        
-        un_win_html = f"""
-        <style>
-        #copy-un-win-btn:hover {{
-            background-color: #CBD5E1 !important;
-            color: #1E293B !important;
-        }}
-        </style>
-        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
-            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_win}</span>
-            <button id="copy-un-win-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
-        </div>
-        <script>
-        const copyUnWinSvg = `{copy_svg}`;
-        const checkUnWinSvg = `{check_svg}`;
-        document.getElementById('copy-un-win-btn').addEventListener('click', function() {{
-            navigator.clipboard.writeText(`{real_win_cmd}`).then(() => {{
-                this.innerHTML = checkUnWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
-                setTimeout(() => {{ this.innerHTML = copyUnWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
-            }});
-        }});
-        </script>
-        """
-        components.html(un_win_html, height=70)
+            </script>
+            """
+            components.html(un_win_html, height=70)
+            st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)

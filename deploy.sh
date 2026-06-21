@@ -14,7 +14,7 @@ SSH_USER="ksh"                           # SSH 사용자 이름
 SSH_HOST_INT="192.168.0.6"               # 홈서버 내부 IP
 SSH_HOST_EXT="125.190.25.48"             # 홈서버 외부 공인 IP
 SSH_PORT="8193"                          # SSH 포트
-REMOTE_PROJECT_DIR="/Users/ksh/Desktop/Project/Logmon" # 홈서버 내 프로젝트 절대 경로
+REMOTE_PROJECT_DIR="/home/ksh/Desktop/Project/Logmon" # 홈서버 내 프로젝트 절대 경로
 DEFAULT_COMMIT_MSG="deploy: auto-deploy update" # 기본 커밋 메시지
 # --------------------------------------------------
 
@@ -76,19 +76,30 @@ fi
 
 echo -e "${BLUE}>>> 6. 홈서버 원격 접속 및 배포 업데이트 시작...${NC}"
 echo -e "접속 대상: ${GREEN}${SSH_USER}@${SSH_HOST}:${SSH_PORT}${NC}"
-echo -e "원격 경로: ${GREEN}${REMOTE_PROJECT_DIR}${NC}"
 
 # SSH 명령어를 통해 원격 서버 제어
 ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   set -e
   echo -e "\n=== 원격 서버 작업 시작 ==="
   
-  # 1. 프로젝트 폴더로 이동
-  if [ ! -d "${REMOTE_PROJECT_DIR}" ]; then
-    echo -e "\e[31m[오류] 원격 프로젝트 경로가 존재하지 않습니다: ${REMOTE_PROJECT_DIR}\e[0m"
+  # 프로젝트 폴더 탐색 및 이동 (리눅스 경로 후보군 동적 스캔)
+  TARGET_DIR="${REMOTE_PROJECT_DIR}"
+  if [ ! -d "\$TARGET_DIR" ]; then
+    for alt in "/home/${SSH_USER}/Desktop/Project/Logmon" "/home/${SSH_USER}/Project/Logmon" "/home/${SSH_USER}/Logmon" "\$HOME/Desktop/Project/Logmon" "\$HOME/Logmon" "\$HOME/Project/Logmon"; do
+      if [ -d "\$alt" ]; then
+        TARGET_DIR="\$alt"
+        break
+      fi
+    done
+  fi
+
+  if [ ! -d "\$TARGET_DIR" ]; then
+    echo -e "\e[31m[오류] 원격 프로젝트 경로를 찾을 수 없습니다. (시도 경로: ${REMOTE_PROJECT_DIR} 및 홈 디렉토리 후보군)\e[0m"
     exit 1
   fi
-  cd "${REMOTE_PROJECT_DIR}"
+
+  echo -e "배포 대상 원격 경로: \e[32m\$TARGET_DIR\e[0m"
+  cd "\$TARGET_DIR"
   
   # 2. 최신 소스 pull
   echo -e "\e[34m[원격] Git Pull 실행 중... (브랜치: ${CURRENT_BRANCH})\e[0m"

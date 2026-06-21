@@ -65,7 +65,7 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 상자 (★NPM 공식 등록 패키지 연동★)
+# 4. 설치 안내 콘텐츠 상자 (★지저분한 변수 없는 원클릭 동적 세션 라우팅 기법★)
 with st.container(border=True):
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 
@@ -73,12 +73,12 @@ with st.container(border=True):
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
         
-        # 유저 화면 상자에는 명품 오픈소스 감성의 세상 깔끔한 표준 명령어 노출
-        visible_npx = "npx logmon-cli"
+        # 유저 화면 상자에는 명품 감성의 주소 노출
+        visible_npx = "npx @thiagomiki/logmon-cli"
         
-        # [★정식 NPM 연동 완료] 유저가 복사 버튼을 누르면 내부적으로 API Key와 백엔드 주소를 주입하고,
-        # NPM 마켓에 방금 등록 성공한 진짜 형님의 공식 패키지(@thiagomiki/logmon-cli)를 원격 호출하여 다이렉트로 가동합니다!
-        hidden_npx = f"BACKEND_URL=\"{base_external_url}\" API_KEY=\"{user_api_key}\" npx @thiagomiki/logmon-cli"
+        # [★원클릭 UX 완성] 지저분한 환경변수를 전부 없애고, 백엔드 도메인 주소 정보까지 키 뒤에 안전하게 압축 주입!
+        # npx @thiagomiki/logmon-cli/유저키/백엔드URL 주소 형태가 복사됩니다.
+        hidden_npx = f"npx @thiagomiki/logmon-cli/{user_api_key}/{base_external_url.replace('http://', 'http__').replace('https://', 'https__')}"
         
         npx_html = f"""
         <div style="background-color: #0F172A; padding: 14px 18px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">

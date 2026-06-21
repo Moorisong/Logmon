@@ -32,7 +32,21 @@ else
     exit 1
 fi
 
-# 2. 관련 설정 및 캐시 파일 클리어
+# 2. 백엔드에 제거 노티 전송 (UX 동기화용 메타 데이터)
+CONFIG_FILE="$HOME/.logmon_config.json"
+if [ -f "$CONFIG_FILE" ]; then
+    B_URL=$(grep -o '"backend_url": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    A_KEY=$(grep -o '"api_key": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    if [ -n "$B_URL" ] && [ -n "$A_KEY" ]; then
+        curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -H "X-LogMon-API-Key: $A_KEY" \
+          -d "{\"source_tool\": \"Agent CLI\", \"event_type\": \"AGENT_UNINSTALL\", \"raw_message\": \"Logmon 에이전트 제거 완료\"}" \
+          "$B_URL/api/logmon/upload" >/dev/null || true
+    fi
+fi
+
+# 3. 관련 설정 및 캐시 파일 클리어
 CONFIG_FILE="$HOME/.logmon_config.json"
 CHECKPOINT_FILE="$HOME/.logmon_checkpoint"
 CRON_LOG="$HOME/.logmon_cron.log"

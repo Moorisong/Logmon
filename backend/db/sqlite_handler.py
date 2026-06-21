@@ -142,13 +142,23 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         metric_row = cursor.fetchone()
         
-        # 에이전트로부터 들어온 로그가 있는지 체크 (Manual Upload UI가 아닌 source_tool 로그가 존재하는지)
+        # 가장 최근의 에이전트 상태 확인 (AGENT_INSTALL vs AGENT_UNINSTALL)
         cursor.execute("""
-            SELECT COUNT(id) FROM ide_activity_logs 
-            WHERE user_key = ? AND source_tool != 'Manual Upload UI'
+            SELECT event_type FROM ide_activity_logs 
+            WHERE user_key = ? AND source_tool = 'Agent CLI' AND event_type IN ('AGENT_INSTALL', 'AGENT_UNINSTALL')
+            ORDER BY timestamp DESC, id DESC LIMIT 1
         """, (user_key,))
-        agent_logs_count = cursor.fetchone()[0] or 0
-        is_agent_installed = agent_logs_count > 0
+        state_row = cursor.fetchone()
+        if state_row:
+            is_agent_installed = (state_row[0] == 'AGENT_INSTALL')
+        else:
+            # 상태 로그가 없을 경우 기존 레거시 폴백 판별
+            cursor.execute("""
+                SELECT COUNT(id) FROM ide_activity_logs 
+                WHERE user_key = ? AND source_tool != 'Manual Upload UI'
+            """, (user_key,))
+            agent_logs_count = cursor.fetchone()[0] or 0
+            is_agent_installed = agent_logs_count > 0
         
         first_log = metric_row[0] if metric_row and metric_row[0] else None
         last_sync_time = metric_row[1] if metric_row and metric_row[1] else None

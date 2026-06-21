@@ -112,5 +112,12 @@ else
     exit 1
 fi
 
-# 7. 설치 완료 (출력 및 이스터에그는 호출부 CLI로 위임)
+# 7. 백엔드에 설치 완료 노티 전송 (UX 동기화용 메타 데이터)
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-LogMon-API-Key: $API_KEY" \
+  -d "{\"source_tool\": \"Agent CLI\", \"event_type\": \"AGENT_INSTALL\", \"raw_message\": \"Logmon 에이전트 설치 완료\"}" \
+  "$BACKEND_URL/api/logmon/upload" >/dev/null || true
+
+# 8. 설치 완료 (출력 및 이스터에그는 호출부 CLI로 위임)
 exit 0

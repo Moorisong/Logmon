@@ -57,13 +57,19 @@ async def get_install_script():
             detail="Installation script source file not found"
         )
     
+    # [★보안/안전장치] 쉘 템플릿 파일 내부 텍스트가 중복 누적되어 있을 경우, 첫 번째 온전한 스크립트 블록만 추출합니다.
+    if "#!/usr/bin/env bash" in content:
+        parts = content.split("#!/usr/bin/env bash")
+        if len(parts) > 2:
+            content = "#!/usr/bin/env bash" + parts[1]
+    
     allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
     primary_key = allowed_keys.split(",")[0].strip() 
     
-    # 가비아 SSL 서브도메인을 베이스 URL로 안전하게 고정
+    # 가비아 SSL 서브도메인 고정
     server_url = "https://logmon.haroo.site" 
 
-    # [수정포인트] 쉘 스크립트의 변경된 변수 선언식과 정확히 일치하도록 조절
+    # 쉘 스크립트 내부 템플릿 변수를 서버 환경 변수로 치환
     content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
     content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
 

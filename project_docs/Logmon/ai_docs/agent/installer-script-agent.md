@@ -54,3 +54,28 @@ backend/
 * **[네트워크 유연성]**: 백엔드 호스트 IP 주소를 스크립트 빌드 시 동적으로 템플릿 처리하거나 가변 인자(arguments)로 받아 설치할 수 있도록 파라미터 유연성을 지원하세요.
 * **[사용자 경험 및 이스터에그]**: 설치 시 사용자의 터미널 경험을 개선하기 위해 로그 출력을 간소화하고, 설치 완료 시에는 귀여운 마법사 고양이 이스터에그 아스키 아트를 제공하여 시각적 즐거움을 선호 사양으로 제공합니다.
 
+---
+
+## 📦 4. CLI 배포 가이드
+
+LogMon CLI 패키지(`@thiagomiki/logmon-cli`)를 버전업하고 npm 레지스트리에 배포하기 위한 자동화 스크립트가 제공됩니다.
+
+* **배포 스크립트 경로**: [cli/publish.sh](file:///Users/shkim/Desktop/Project/Logmon/cli/publish.sh)
+* **실행 방법**:
+  ```bash
+  # 패치 버전업 배포 (e.g., 1.0.3 -> 1.0.4)
+  ./cli/publish.sh patch
+  
+  # 마이너 버전업 배포 (e.g., 1.0.3 -> 1.1.0)
+  ./cli/publish.sh minor
+  
+  # 메이저 버전업 배포 (e.g., 1.0.3 -> 2.0.0)
+  ./cli/publish.sh major
+  ```
+  또는 CLI 디렉터리 내에서 npm 스크립트를 통해 실행 가능합니다.
+  ```bash
+  npm run publish-cli -- [patch|minor|major]
+  ```
+* **선행 조건**: 실행 환경에서 `npm login`이 완료되어 있어야 하며 배포 권한이 확보되어 있어야 합니다.
+
+

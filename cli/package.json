@@ -12,6 +12,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "publish-cli": "./publish.sh"
+  },
   "author": "ksh💗",
   "license": "MIT"
+
 }

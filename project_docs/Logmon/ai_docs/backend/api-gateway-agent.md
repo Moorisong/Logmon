@@ -84,6 +84,15 @@ async def upload_log(payload: dict, api_key: str = Depends(verify_api_key)):
   3. `last_sync_time`: 가장 마지막으로 로그가 들어온 시각 (ISO 포맷 또는 경과 시간)
   4. `current_db_mb` 및 `max_db_mb`: 현재 SQLite+Chroma 누적 DB 용량 및 최대 하드캡 상한선(예: 500). 프론트엔드 용량 게이지 렌더링용.
 
+#### 5단계: Docker 배포 환경 구축 및 자원 제한
+* `docker-compose.yml`을 통해 `logmon-ui`, `logmon-backend`, `logmon-ollama` 서비스를 통합 관리합니다.
+* `logmon-ollama` 컨테이너의 포트는 호스트에 바인딩하지 않고 오직 독립 브리지 네트워크(`logmon-network`) 내부에서만 통신할 수 있게 차단합니다.
+* 데이터 저장소 볼륨 마운트는 호스트 경로 `/home/ksh/logmon/data`로 일원화합니다.
+  - SQLite DB: `/home/ksh/logmon/data/db` -> `/app/data`
+  - Chroma DB: `/home/ksh/logmon/data/chroma` -> `/app/chroma_data`
+  - Ollama 가중치: `/home/ksh/logmon/data/ollama` -> `/root/.ollama`
+* N95 CPU 자원 보호를 위해 `logmon-backend`와 `logmon-ollama` 컨테이너의 CPU 한도를 `3.0`으로 제약하는 deploy 설정을 적용합니다.
+
 ---
 
 ## 🚨 3. 철벽 코드 컨벤션 및 제약 조건

@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  logmon-ollama:
+    image: ollama/ollama:latest
+    container_name: logmon-ollama
+    volumes:
+      - /home/ksh/logmon/data/ollama:/root/.ollama
+    networks:
+      - logmon-network
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+    restart: always
+
+  logmon-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: logmon-backend
+    ports:
+      - "3008:8000"
+    environment:
+      - LOGMON_DB_DIR=/app/data
+      - LOGMON_CHROMA_DIR=/app/chroma_data
+      - OLLAMA_HOST=http://logmon-ollama:11434
+      - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
+    volumes:
+      - /home/ksh/logmon/data/db:/app/data
+      - /home/ksh/logmon/data/chroma:/app/chroma_data
+    networks:
+      - logmon-network
+    depends_on:
+      - logmon-ollama
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+    restart: always
+
+  logmon-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: logmon-ui
+    ports:
+      - "3007:8501"
+    environment:
+      - BACKEND_URL=http://logmon-backend:8000
+    networks:
+      - logmon-network
+    depends_on:
+      - logmon-backend
+    restart: always
+
+networks:
+  logmon-network:
+    name: logmon-network
+    driver: bridge

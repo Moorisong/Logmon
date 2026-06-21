@@ -48,13 +48,13 @@
 
 ## 💾 3. 데이터 영속성 및 볼륨 마운트 구조
 
-서버 재부팅 또는 컨테이너 리프레시 시 데이터가 유실되지 않도록 홈서버 호스트의 고정 경로 `/home/ksh/logmon_data` 폴더를 완벽히 바인딩합니다.
+서버 재부팅 또는 컨테이너 리프레시 시 데이터가 유실되지 않도록 홈서버 호스트의 고정 경로 `/home/ksh/logmon/data` 폴더를 완벽히 바인딩합니다.
 
 | 호스트 경로 | 컨테이너 내부 경로 | 매핑 컨테이너 | 설명 |
 | :--- | :--- | :--- | :--- |
-| `/home/ksh/logmon_data/db` | `/app/data` | `logmon-backend` | SQLite 3 (`logmon.db`) DB 파일 저장 폴더 |
-| `/home/ksh/logmon_data/chroma` | `/app/chroma_data` | `logmon-backend` | Chroma DB 벡터 데이터 영속화 폴더 |
-| `/home/ksh/logmon_data/ollama` | `/root/.ollama` | `logmon-ollama` | Gemma2 및 bge 임베딩 모델 가중치 파일 보존 폴더 |
+| `/home/ksh/logmon/data/db` | `/app/data` | `logmon-backend` | SQLite 3 (`logmon.db`) DB 파일 저장 폴더 |
+| `/home/ksh/logmon/data/chroma` | `/app/chroma_data` | `logmon-backend` | Chroma DB 벡터 데이터 영속화 폴더 |
+| `/home/ksh/logmon/data/ollama` | `/root/.ollama` | `logmon-ollama` | Gemma2 및 bge 임베딩 모델 가중치 파일 보존 폴더 |
 
 ---
 

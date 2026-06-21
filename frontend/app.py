@@ -52,8 +52,10 @@ stats = fetch_stats()
 is_error_state = not stats.get("is_online", True) and "mock_stats" not in st.session_state
 
 if not is_error_state:
-    st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
-    st.markdown("로컬 개발 PC의 생산성과 오류 발생 트렌드를 시각화하고 과거 이력에 대해 질문하세요.")
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 30px;'>로컬 개발 PC 환경 트렌드를 파악하고 과거 이력에 대해 질문하세요.</div>", 
+    unsafe_allow_html=True
+)
 
 if "mock_stats" in st.session_state:
     for k, v in st.session_state["mock_stats"].items():

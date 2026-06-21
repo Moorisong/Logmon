@@ -80,3 +80,107 @@ with st.container(border=True):
                 success = upload_log(file_bytes, uploaded_file.name)
             if success:
                 st.success("파일이 성공적으로 업로드 및 처리되었습니다!")
+
+# 6. 에이전트 제거 가이드 섹션 (디자인 요건 준수)
+st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
+
+uninstall_b64 = get_base64_image("frontend/assets/icons/icon_uninstall.png")
+
+with st.container(border=True):
+    st.markdown(f'''
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+            <img src="data:image/png;base64,{uninstall_b64}" class="icon-img" style="width: 28px; height: 28px; mix-blend-mode: multiply;">
+            <h3 style="margin: 0; font-size: 20px; font-weight: 700;">에이전트 제거 가이드</h3>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    st.markdown("설치된 에이전트를 시스템에서 완전히 삭제하려면 아래 가이드를 따르십시오.")
+    
+    tab_un_mac, tab_un_win = st.tabs(["macOS / Linux 제거", "Windows 제거"])
+    
+    with tab_un_mac:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
+        
+        # 화면상에서는 마스킹 처리된 주소 제공
+        st.code("curl -sL ****** | bash", language="bash")
+        
+        # 간접 복사 버튼 구성 (백엔드 실제 도메인과 주소 사용)
+        real_mac_cmd = f"curl -sL {BACKEND_URL}/api/logmon/static/uninstall-agent.sh | bash"
+        
+        import streamlit.components.v1 as components
+        mac_html_template = """
+            <button id="copy-mac-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; 
+                border: none; 
+                padding: 10px 18px; 
+                border-radius: 6px; 
+                cursor: pointer; 
+                font-size: 14px;
+                font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-mac-btn');
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText("REAL_MAC_CMD").then(() => {
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
+                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
+                    }, 2000);
+                });
+            });
+            </script>
+        """
+        components.html(mac_html_template.replace("REAL_MAC_CMD", real_mac_cmd), height=60)
+        
+    with tab_un_win:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("**1. 관리자 권한의 PowerShell 창에서 복사 버튼을 클릭하여 실행하십시오.**")
+        
+        # 화면상에서는 마스킹 처리된 주소 제공
+        st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
+        
+        # 간접 복사 버튼 구성 (백엔드 실제 도메인과 주소 사용)
+        real_win_cmd = f"Invoke-WebRequest -Uri {BACKEND_URL}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        
+        win_html_template = """
+            <button id="copy-win-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; 
+                border: none; 
+                padding: 10px 18px; 
+                border-radius: 6px; 
+                cursor: pointer; 
+                font-size: 14px;
+                font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-win-btn');
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText("REAL_WIN_CMD").then(() => {
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
+                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
+                    }, 2000);
+                });
+            });
+            </script>
+        """
+        components.html(win_html_template.replace("REAL_WIN_CMD", real_win_cmd), height=60)

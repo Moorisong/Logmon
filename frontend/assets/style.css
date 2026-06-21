@@ -99,6 +99,15 @@ footer { visibility: hidden; }
     padding: 4px 10px !important;
 }
 
+/* 입력창 포커스 시 테두리 색상을 푸른색 계열로 변경 */
+div[data-baseweb="input"]:focus-within {
+    border-color: #3B82F6 !important;
+    box-shadow: 0 0 0 1px #3B82F6 !important;
+}
+div[data-baseweb="input"] {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
 /* 로고 및 아이콘 정렬 유틸리티 */
 .icon-img {
     vertical-align: middle;

@@ -63,7 +63,7 @@ def live_dashboard_fragment():
             btn_link = "/install?mode=uninstall"
             st.markdown(
                 f'''<a href="{btn_link}" target="_self" style="text-decoration: none;">
-                    <div class="install-btn">
+                     <div class="install-btn">
                         {btn_text}
                     </div>
                 </a>''', 
@@ -73,6 +73,18 @@ def live_dashboard_fragment():
     # 에러 상태 여부 판단 (백엔드가 오프라인이고, 세션에 mock_stats가 없는 경우)
     is_error_state = not stats.get("is_online", True) and "mock_stats" not in st.session_state
     st.session_state["is_error_state"] = is_error_state
+
+    if is_error_state:
+        # 빨간 박스 (에러 알림창) 렌더링 - Welcome 타이틀 바로 밑에 표시됨
+        st.markdown(
+            '<div class="stAlert" data-testid="stAlert" style="background-color: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.2); border-radius: 8px; padding: 12px 16px; margin-top: 15px; margin-bottom: 20px;">'
+            '<div style="color: #FF4B4B; line-height: 1.45; font-size: 14px; font-weight: 500;">'
+            '💡 서버가 일시적으로 오프라인 상태예요.<br/>'
+            '<div style="margin-left: 20px; margin-top: 4px; font-size: 13px; font-weight: normal; opacity: 0.9;">잠시 점검 중이거나 쉬고 있는 것 같으니, 조금만 기다렸다가 다시 찾아와 주세요!</div>'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
     if not is_error_state:
         st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)

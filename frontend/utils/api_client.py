@@ -25,15 +25,6 @@ def fetch_stats() -> Dict[str, Any]:
         data["is_online"] = True
         return data
     except requests.exceptions.RequestException as e:
-        st.markdown(
-            '<div class="stAlert" data-testid="stAlert" style="background-color: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">'
-            '<div style="color: #FF4B4B; line-height: 1.45; font-size: 14px; font-weight: 500;">'
-            '💡 서버가 일시적으로 오프라인 상태예요.<br/>'
-            '<div style="margin-left: 20px; margin-top: 4px; font-size: 13px; font-weight: normal; opacity: 0.9;">잠시 점검 중이거나 쉬고 있는 것 같으니, 조금만 기다렸다가 다시 찾아와 주세요!</div>'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True
-        )
         return {
             "total_logs": 0,
             "today_tokens": 0,

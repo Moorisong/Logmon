@@ -102,25 +102,38 @@ def render_chat_interface(is_error_state: bool, is_local: bool):
             with st.chat_message(msg["role"], avatar=avatar):
                 st.markdown(msg["content"])
 
+    # 어시스턴트가 응답 대기 중인지 상태 체크
+    is_waiting = st.session_state.get("waiting_for_reply", False)
+    disabled_state = is_error_state or is_waiting
+
     # 채팅 입력창 (컨테이너 하단에 위치하도록 설정)
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([0.85, 0.15])
         with col1:
-            user_query = st.text_input("질문", placeholder="질문 내용을 입력하세요.", label_visibility="collapsed", disabled=is_error_state)
+            user_query = st.text_input("질문", placeholder="질문 내용을 입력하세요.", label_visibility="collapsed", disabled=disabled_state)
         with col2:
-            submit_btn = st.form_submit_button("전송", use_container_width=True, disabled=is_error_state)
+            submit_btn = st.form_submit_button("전송", use_container_width=True, disabled=disabled_state)
 
     if submit_btn and user_query:
         # 유저 메시지 화면 추가 (컨테이너 내부에 렌더링)
         st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state["waiting_for_reply"] = True
+        st.rerun()
+
+    if st.session_state.get("waiting_for_reply", False):
         with chat_container:
-            with st.chat_message("user", avatar=user_avatar):
-                st.markdown(user_query)
-            
             # AI 봇 응답 (스피너) (컨테이너 내부에 렌더링)
             with st.chat_message("assistant", avatar=assistant_avatar):
                 with st.spinner("과거 로그 검색 및 AI 분석 중..."):
-                    ai_answer = send_chat(user_query)
+                    # 마지막으로 추가한 유저 쿼리를 백엔드로 전송
+                    last_user_query = ""
+                    for msg in reversed(st.session_state.messages):
+                        if msg["role"] == "user":
+                            last_user_query = msg["content"]
+                            break
+                    ai_answer = send_chat(last_user_query)
                     st.markdown(ai_answer)
                     st.session_state.messages.append({"role": "assistant", "content": ai_answer})
+        st.session_state["waiting_for_reply"] = False
+        st.rerun()
 

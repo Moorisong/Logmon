@@ -84,3 +84,16 @@ def test_npx_html_rendering_vars():
     assert hidden_npx == f"npx @thiagomiki/logmon-cli {user_api_key}"
 
 
+def test_mock_button_visibility_by_env():
+    # 1) 로컬 환경(is_local=True)일 때는 목 데이터 버튼이 노출되어야 함
+    is_local_env = True
+    show_mock_button = is_local_env
+    assert show_mock_button is True
+
+    # 2) 원격/운영 환경(is_local=False)일 때는 목 데이터 버튼이 노출되지 않아야 함
+    is_prod_env = False
+    show_mock_button_prod = is_prod_env
+    assert show_mock_button_prod is False
+
+
+

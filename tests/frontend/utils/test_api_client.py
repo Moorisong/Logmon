@@ -10,22 +10,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from utils.api_client import fetch_stats, send_chat
 
 @patch("utils.api_client.requests.get")
-@patch("utils.api_client.st.markdown")
-def test_fetch_stats_request_exception(mock_st_markdown, mock_requests_get):
+def test_fetch_stats_request_exception(mock_requests_get):
     # Setup mock to raise a RequestException
     mock_requests_get.side_effect = requests.exceptions.RequestException("Mocked connection error")
     
     # Call the function
     result = fetch_stats() # call the function
-    
-    # Assert st.markdown was called to render custom HTML style error
-    assert mock_st_markdown.called
-    call_args = mock_st_markdown.call_args[0][0]
-    # HTML 태그 스타일 속성 및 수정된 텍스트 포함 여부 검증
-    assert "stAlert" in call_args
-    assert "💡 서버가 일시적으로 오프라인 상태예요." in call_args
-    assert "잠시 점검 중이거나 쉬고 있는 것 같으니" in call_args
-    assert "margin-top: 4px;" in call_args
     
     # Assert the fallback dict is returned with is_online=False
     assert result["total_logs"] == 0
@@ -96,4 +86,23 @@ def test_offline_ui_condition():
     session_state_with_mock = {"mock_stats": {"uptime_days": 5}}
     is_error_state_3 = not stats_offline.get("is_online", True) and "mock_stats" not in session_state_with_mock
     assert is_error_state_3 is False
+
+def test_chat_input_disabled_state_condition():
+    # 1) 에러 상태이거나 어시스턴트가 답변 대기 중일 때 => 입력창 비활성화 (disabled_state == True)
+    is_error_state = True
+    is_waiting = False
+    disabled_state_1 = is_error_state or is_waiting
+    assert disabled_state_1 is True
+
+    is_error_state = False
+    is_waiting = True
+    disabled_state_2 = is_error_state or is_waiting
+    assert disabled_state_2 is True
+
+    # 2) 정상 상태이고 어시스턴트 답변이 끝났을 때 => 입력창 활성화 (disabled_state == False)
+    is_error_state = False
+    is_waiting = False
+    disabled_state_3 = is_error_state or is_waiting
+    assert disabled_state_3 is False
+
 

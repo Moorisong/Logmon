@@ -27,6 +27,7 @@ services:
       - OLLAMA_HOST=http://logmon-ollama:11434
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
     volumes:
+      - /home/ksh/logmon/backend:/app/backend  # ◀ [★영구 패치] 호스트의 백엔드 소스 코드를 실시간 동적 바인딩합니다!
       - /home/ksh/logmon/data/db:/app/data
       - /home/ksh/logmon/data/chroma:/app/chroma_data
     networks:
@@ -50,7 +51,7 @@ services:
       - .env
     environment:
       - BACKEND_URL=http://logmon-backend:8000
-      - LOGMON_API_KEY=${ALLOWED_API_KEYS}  # <── [★완벽 일치!] 파이썬이 기다리던 그 이름 그대로 비밀번호를 찔러넣어 줍니다!
+      - LOGMON_API_KEY=${ALLOWED_API_KEYS}
     networks:
       - logmon-network
     depends_on:

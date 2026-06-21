@@ -187,12 +187,6 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
             filters.append({"user_key": user_key})
         if event_type:
             filters.append({"event_type": event_type})
-        if is_today:
-            import datetime
-            timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
-            kst_now = datetime.datetime.now(timezone_kst)
-            today_str = kst_now.strftime("%Y-%m-%d 00:00:00")
-            filters.append({"timestamp": {"$gte": today_str}})
             
         where_filter = {}
         if len(filters) == 1:
@@ -200,14 +194,34 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
         elif len(filters) > 1:
             where_filter = {"$and": filters}
             
+        # If filtering by today, query more candidate results to filter in python
+        query_n = n_results * 5 if is_today else n_results
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=query_n,
             where=where_filter if where_filter else None,
-            include=["documents"]
+            include=["documents", "metadatas"]
         )
         
-        return results.get("documents", [])
+        docs = results.get("documents", [])[0] if results.get("documents") else []
+        metas = results.get("metadatas", [])[0] if results.get("metadatas") else []
+        
+        if is_today:
+            import datetime
+            timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+            kst_now = datetime.datetime.now(timezone_kst)
+            today_date_str = kst_now.strftime("%Y-%m-%d")
+            
+            filtered_docs = []
+            for doc, meta in zip(docs, metas):
+                ts = meta.get("timestamp", "")
+                if ts and ts.startswith(today_date_str):
+                    filtered_docs.append(doc)
+                    if len(filtered_docs) >= n_results:
+                        break
+            return [filtered_docs]
+        else:
+            return [docs]
     except Exception as e:
         logger.error(f"query_vectors 조회 중 에러 발생: {e}")
         return []

@@ -5,7 +5,8 @@ from frontend.utils.api_client import BACKEND_URL, LOGMON_API_KEY
 from frontend.utils.image_helper import get_base64_image
 
 # 1. 페이지 셋업 및 CSS 주입
-st.set_page_config(page_title="Install LogMon Agent", layout="wide", initial_sidebar_state="collapsed")
+icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "icon_logo.png")
+st.set_page_config(page_title="Install LogMon Agent", page_icon=icon_path, layout="wide", initial_sidebar_state="collapsed")
 
 def load_css():
     css_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "style.css")

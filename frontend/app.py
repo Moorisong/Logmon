@@ -12,7 +12,8 @@ from frontend.components.chat import render_chat_interface
 is_local = "localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL or os.getenv("LOGMON_ENV", "local") == "local"
 
 # 1. 페이지 셋업 및 CSS 주입
-st.set_page_config(page_title="LogMon Dashboard", layout="wide", initial_sidebar_state="collapsed")
+icon_path = os.path.join(os.path.dirname(__file__), "assets", "icons", "icon_logo.png")
+st.set_page_config(page_title="LogMon Dashboard", page_icon=icon_path, layout="wide", initial_sidebar_state="collapsed")
 
 def load_css():
     css_path = os.path.join(os.path.dirname(__file__), "assets", "style.css")

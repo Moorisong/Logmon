@@ -122,12 +122,23 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
             docs.append(chunk)
             embeddings.append(vector)
             
+            # Determine chunk-specific event type if the incoming event_type is generic (like LOG_DUMP)
+            chunk_event_type = event_type
+            if event_type == "LOG_DUMP":
+                chunk_lower = chunk.lower()
+                if any(w in chunk_lower for w in ["[error]", "error:", "exception:", "fail", "오류"]):
+                    chunk_event_type = "ERROR"
+                elif any(w in chunk_lower for w in ["[warning]", "warning:", "warn:", "경고"]):
+                    chunk_event_type = "WARNING"
+                else:
+                    chunk_event_type = "INFO"
+
             metadatas.append({
                 "id": log_id,
                 "user_key": user_key,
                 "timestamp": timestamp,
                 "source_tool": source_tool,
-                "event_type": event_type,
+                "event_type": chunk_event_type,
                 "chunk_index": i
             })
             
@@ -165,18 +176,34 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
             
         collection = get_collection()
         
+        # Determine if we should filter by today
+        is_today = False
+        q_lower = query_text.lower()
+        if any(w in q_lower for w in ["오늘", "today", "투데이"]):
+            is_today = True
+
+        filters = []
+        if user_key:
+            filters.append({"user_key": user_key})
+        if event_type:
+            filters.append({"event_type": event_type})
+        if is_today:
+            import datetime
+            timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+            kst_now = datetime.datetime.now(timezone_kst)
+            today_str = kst_now.strftime("%Y-%m-%d 00:00:00")
+            filters.append({"timestamp": {"$gte": today_str}})
+            
         where_filter = {}
-        if user_key and event_type:
-            where_filter = {"$and": [{"user_key": user_key}, {"event_type": event_type}]}
-        elif user_key:
-            where_filter = {"user_key": user_key}
-        elif event_type:
-            where_filter = {"event_type": event_type}
+        if len(filters) == 1:
+            where_filter = filters[0]
+        elif len(filters) > 1:
+            where_filter = {"$and": filters}
             
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results,
-            where=where_filter,
+            where=where_filter if where_filter else None,
             include=["documents"]
         )
         

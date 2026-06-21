@@ -27,15 +27,9 @@ footer { visibility: hidden; }
     box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
     padding: 24px;
     margin-bottom: 20px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
     display: flex;
     flex-direction: column;
     justify-content: center;
-}
-
-.glass-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
 }
 
 .glass-title {

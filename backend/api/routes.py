@@ -1,8 +1,8 @@
 import datetime
 import logging
-import os  # <-- 동적 스크립트 파일 처리를 위해 os 임포트 추가
+import os
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response  # <-- Response 추가
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response
 from pydantic import BaseModel
 
 from backend.api.dependencies import verify_api_key
@@ -35,7 +35,6 @@ def run_chroma_pipeline(log_id: int, data: dict):
     try:
         process_and_store_vector(log_id, data)
     except Exception as e:
-        # 이미 SQLite에는 적재되었으므로 에러 로그만 남김
         logger.error(f"백그라운드 Chroma DB 적재 실패 (log_id: {log_id}): {e}")
 
 @router.get("/agent-setup-script", status_code=status.HTTP_200_OK)
@@ -44,7 +43,6 @@ async def get_install_script():
     서버의 API Key와 가비아 도메인 주소를 install-agent.sh에 
     동적으로 주입하여 에이전트(CLI)에게 문자열 텍스트로 반환합니다.
     """
-    # 1. 원본 쉘 스크립트 경로 확인 (Docker 볼륨 및 실행 환경 고려)
     script_path = "backend/static/install-agent.sh"
     if not os.path.exists(script_path):
         script_path = os.path.join(os.path.dirname(__file__), "..", "static", "install-agent.sh")
@@ -59,19 +57,16 @@ async def get_install_script():
             detail="Installation script source file not found"
         )
     
-    # 2. 서버 .env에 등록된 실제 허용된 API Key 목록 가져오기
     allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
-    # 쉼표(,)로 분리되어 여러 개가 등록되어 있을 경우 첫 번째 키를 배포 마스터 키로 획득
     primary_key = allowed_keys.split(",")[0].strip() 
     
-    # 가비아 서브도메인을 베이스 URL로 고정
+    # 가비아 SSL 서브도메인을 베이스 URL로 안전하게 고정
     server_url = "https://logmon.haroo.site" 
 
-    # 3. 스크립트 내부의 기본 주석/더미 설정을 진짜 서버 정보로 동적 치환(Replace)
-    content = content.replace('export API_KEY="default_dev_key"', f'export API_KEY="{primary_key}"')
-    content = content.replace('export BACKEND_URL="http://localhost:3008"', f'export BACKEND_URL="{server_url}"')
+    # [수정포인트] 쉘 스크립트의 변경된 변수 선언식과 정확히 일치하도록 조절
+    content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
+    content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
 
-    # 4. 쉘 스크립트가 로컬 PC 터미널에서 pipe( | bash )를 통해 바로 실행될 수 있도록 plain 텍스트로 리턴
     return Response(content=content, media_type="text/plain")
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -83,17 +78,13 @@ async def upload_log(
     """
     수집기 에이전트로부터 로그를 전송받아 SQLite에 적재하고,
     백그라운드에서 Chroma DB 벡터 처리를 트리거합니다.
-    (Pydantic을 통한 페이로드 검증 실패 시 자동 422 에러 응답)
     """
-    # 1. DB 적재를 위한 데이터 구성
-    # API 요청을 받은 현재 시각을 기본 timestamp로 지정 (또는 클라이언트가 전송할 수 있음)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     data = payload.model_dump()
     data["user_key"] = api_key
     data["timestamp"] = now_str
     
-    # 2. SQLite 3 적재 (Idempotency 처리 포함)
     try:
         log_id = insert_activity_log(data)
     except Exception as e:
@@ -103,17 +94,13 @@ async def upload_log(
             detail="Database persistence error"
         )
         
-    # 멱등성에 의해 중복 처리된 경우 (None 반환 시)
     if log_id is None:
         return {
             "status": "skipped",
             "detail": "Log already exists (Idempotent request)"
         }
         
-    # 3. Chroma DB 임베딩 적재 (백그라운드 태스크)
     background_tasks.add_task(run_chroma_pipeline, log_id, data)
-    
-    # 4. 용량 상한선 및 TTL 모니터링 (백그라운드 태스크)
     background_tasks.add_task(run_capacity_check_pipeline)
     
     return {
@@ -127,12 +114,10 @@ def run_capacity_check_pipeline():
     from backend.db.chroma_handler import delete_vectors_by_log_ids
     
     try:
-        # 1. 먼저 7일 TTL 클리닝 수행
         ttl_deleted_ids = cleanup_ttl_logs()
         if ttl_deleted_ids:
             delete_vectors_by_log_ids(ttl_deleted_ids)
             
-        # 2. 용량 상한선(Hard Cap) 체크 (500MB)
         max_mb = 500.0
         while True:
             current_mb = get_total_db_size_mb()
@@ -156,10 +141,7 @@ async def chat_with_logmon(
     사용자의 질문을 받아 RAG 엔진을 거쳐 Ollama 기반으로 답변을 생성합니다.
     """
     answer = await ask_rag_agent(question=payload.question, user_key=api_key)
-    
-    return {
-        "answer": answer
-    }
+    return {"answer": answer}
 
 @router.get("/stats", status_code=status.HTTP_200_OK)
 async def get_stats(

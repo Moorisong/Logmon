@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
 set -e
 
-# 1. 환경 변수 검증 및 기본값 할당
+# 1. 환경 변수 검증 및 기본값 할당 (백엔드가 이 기본 문자열 라인을 실시간 갱신합니다)
+BACKEND_URL="http://localhost:3008"
+API_KEY="default_dev_key"
+
 CLI_VER="${CLI_VERSION:-v1.0.6}"
 if [[ ! "$CLI_VER" =~ ^v ]]; then
     CLI_VER="v$CLI_VER"
 fi
 
-if [ -z "$BACKEND_URL" ]; then
-    BACKEND_URL="https://logmon.haroo.site"
-    echo "  > 서버 주소: $BACKEND_URL (기본값 설정)"
-else
-    echo "  > 서버 주소: $BACKEND_URL"
-fi
-
-if [ -z "$API_KEY" ]; then
-    API_KEY="default_dev_key"
+echo "  > 서버 주소: $BACKEND_URL"
+if [ "$API_KEY" = "default_dev_key" ]; then
     echo "  > [경고] API Key가 제공되지 않아 기본 개발용 키($API_KEY)로 대체합니다."
 else
     echo "  > 보안 인증: 매핑 완료! ✓"
@@ -55,7 +51,6 @@ echo "✅ 설정 및 최신 에이전트 코드 동기화 완료! ✓"
 PYTHON_BIN=$(command -v python3 || command -v python)
 EXEC_CMD="$PYTHON_BIN"
 EXEC_ARG1="$AGENT_SCRIPT_PATH"
-
 
 # 6. OS 판별 및 스케줄러 등록
 OS_NAME=$(uname -s)

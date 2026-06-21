@@ -66,7 +66,7 @@ fi
 
 # SSH 접속 호스트 자동 판별 (내부망 우선 접속 체크)
 echo -e "${BLUE}>>> 5. 홈서버 SSH 접속 가능 여부 체크 중...${NC}"
-if nc -z -w 2 "$SSH_HOST_INT" "$SSH_PORT" 2>/dev/null; then
+if python3 -c "import socket; s = socket.socket(); s.settimeout(2); s.connect(('$SSH_HOST_INT', $SSH_PORT))" 2>/dev/null; then
     SSH_HOST="$SSH_HOST_INT"
     echo -e "접속 경로: ${GREEN}내부망 (인프라 내부 직접 연결: ${SSH_HOST})${NC}"
 else

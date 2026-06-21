@@ -6,14 +6,21 @@ echo "  🚀 Logmon Agent 설치 마법사 (macOS/Linux)  "
 echo "==============================================="
 echo ""
 
-# 1. 대화형 설정 입력
-read -p "백엔드 서버 주소를 입력하세요 (예: https://logmon.haroo.site): " BACKEND_URL
+# [★교정] 프론트엔드가 주입해 준 주소가 있다면 그것을 사용하고, 없다면 대화형 입력을 받습니다.
+# 파이프(| bash) 실행 중에도 키보드 입력을 정상적으로 받기 위해 </dev/tty 장치를 연결했습니다.
+if [ -z "$BACKEND_URL" ]; then
+    read -p "백엔드 서버 주소를 입력하세요 (예: https://logmon.haroo.site): " BACKEND_URL < /dev/tty
+fi
+
 if [ -z "$BACKEND_URL" ]; then
     BACKEND_URL="https://logmon.haroo.site"
     echo "  > 입력이 없어 기본값($BACKEND_URL)으로 설정합니다."
+else
+    echo "  > 연결할 백엔드 서버 주소: $BACKEND_URL"
 fi
 
-read -p "발급받은 보안 API Key를 입력하세요: " API_KEY
+# [★교정] API KEY 입력창도 파이프라인 먹통 방지를 위해 </dev/tty 장치 연결
+read -p "발급받은 보안 API Key를 입력하세요: " API_KEY < /dev/tty
 if [ -z "$API_KEY" ]; then
     echo "  > [경고] API Key가 비어있습니다. 백엔드 전송이 거부될 수 있습니다."
 fi
@@ -29,16 +36,8 @@ EOF
 echo "✅ 설정 파일이 저장되었습니다: $CONFIG_FILE"
 
 # 3. MVP용 바이너리 경로 우회 셋업
-# TODO (Phase 4): 추후 curl 다운로드 방식으로 교체할 포인트
-# curl -sL "$BACKEND_URL/api/logmon/static/logmon-agent-mac" -o /usr/local/bin/logmon-agent
-# chmod +x /usr/local/bin/logmon-agent
-# EXEC_CMD="/usr/local/bin/logmon-agent"
-
-# MVP 단계: 현재 프로젝트의 파이썬 인터프리터 및 agent_main.py 경로 매핑
 PYTHON_BIN=$(command -v python3 || command -v python)
 CURRENT_DIR=$(pwd)
-# 설치 스크립트가 밖에서 실행될 수 있으므로, 상위 Logmon 폴더를 추적 (만약 못 찾으면 홈 디렉터리 기준 매핑 등)
-# MVP 환경에서는 이 스크립트를 Logmon 루트 폴더에서 실행한다고 가정
 AGENT_SCRIPT_PATH="$CURRENT_DIR/agent/agent_main.py"
 EXEC_CMD="$PYTHON_BIN"
 EXEC_ARG1="$AGENT_SCRIPT_PATH"
@@ -96,10 +95,8 @@ EOF
     
 elif [ "$OS_NAME" = "Linux" ]; then
     # Linux - crontab 등록
-    # 멱등성: 기존 logmon-agent 크론 지우고 덧붙이기
     CRON_TEMP=$(mktemp)
     crontab -l | grep -v "agent_main.py" > "$CRON_TEMP" || true
-    # PYTHONPATH 주입 후 실행 (cron 환경 변수 한계 극복)
     echo "*/5 * * * * cd $CURRENT_DIR && export PYTHONPATH=$CURRENT_DIR && $EXEC_CMD $EXEC_ARG1 >> $HOME/.logmon_cron.log 2>&1" >> "$CRON_TEMP"
     crontab "$CRON_TEMP"
     rm "$CRON_TEMP"
@@ -110,7 +107,17 @@ else
     exit 1
 fi
 
+# 5. [★귀염뽀짝 이스터 에그] 설치 완료 로그 및 Made by ksh 마크 주입
 echo ""
 echo "🎉 Logmon 로컬 수집기 설치가 완료되었습니다!"
 echo "   백그라운드에서 매 5분마다 IDE 로그를 체크하여 서버로 전송합니다."
 echo "   제거를 원하시면 uninstall-agent.sh 를 실행하세요."
+echo ""
+echo "==============================================="
+echo "       /\_/\   "
+echo "      ( o.o )  🐾 LogMon Agent is Watching You!"
+echo "       > ^ <   "
+echo "==============================================="
+echo "  [ System Build: v1.0.0 / Made by ksh ]"
+echo "==============================================="
+echo ""

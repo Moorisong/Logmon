@@ -14,4 +14,4 @@ RAG_PROMPT_TEMPLATE = """당신은 개발자의 작업 로그와 과거 해결 �
 
 [답변] (친절하고 쉬운 '~요' 체의 한국어로 작성):"""
 
-ERROR_FALLBACK_MESSAGE = "지금 AI 엔진 서비스가 잠시 쉬고 있어요. 대시보드의 통계 차트 기능을 먼저 이용해 주세요!"
+ERROR_FALLBACK_MESSAGE = "지금 AI 엔진 서비스가 잠시 쉬고 있어요."

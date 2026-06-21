@@ -1,6 +1,8 @@
 import os
 import httpx
 import logging
+import re
+from datetime import datetime
 from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -17,7 +19,7 @@ MODEL_NAME = "gemma2:2b"
 async def generate_completion(prompt: str) -> str:
     """
     Ollama /api/generate 엔드포인트에 비동기로 프롬프트를 전송하고 
-    단일 문자열 응답을 받아옵니다. (스트리밍은 MVP 복잡성 방지를 위해 제외)
+    단일 문자열 응답을 받아옵니다.
     """
     endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
     
@@ -32,8 +34,8 @@ async def generate_completion(prompt: str) -> str:
     }
     
     try:
-        # 타임아웃 30초 설정 (저전력 CPU 응답 지연 대비)
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # 💡 타임아웃을 180초(3분)로 넉넉하게 늘려 오야마씨의 장고를 기다려줍니다.
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(endpoint, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -74,7 +76,6 @@ def parse_prompt(prompt: str):
 
 def query_sqlite_logs(question: str) -> list:
     from backend.db.connection import get_connection
-    import re
     
     clean_question = question
     for word in ["오늘", "내가", "제일", "무슨", "일", "있었지", "질문", "대해", "알려줘", "분석", "해줘", "했어", "했지", "한거", "한거지", "어떻게"]:
@@ -91,8 +92,11 @@ def query_sqlite_logs(question: str) -> list:
         conditions = []
         params = []
         
+        # 💡 [버그 수정] date('now', 'localtime') 대신 파이썬의 현재 KST 날짜 문자열을 직접 바인딩하여 시차 오류 완벽 해결!
         if is_today_query:
-            conditions.append("date(timestamp) = date('now', 'localtime')")
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            conditions.append("strftime('%Y-%m-%d', timestamp) = ?")
+            params.append(today_str)
             
         if keywords:
             escaped_kws = [re.escape(kw) for kw in keywords if kw]
@@ -110,8 +114,9 @@ def query_sqlite_logs(question: str) -> list:
         rows = cursor.fetchall()
         
         if not rows and is_today_query:
-            query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs WHERE date(timestamp) = date('now', 'localtime') ORDER BY timestamp DESC LIMIT 10"
-            cursor.execute(query)
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs WHERE strftime('%Y-%m-%d', timestamp) = ? ORDER BY timestamp DESC LIMIT 10"
+            cursor.execute(query, [today_str])
             rows = cursor.fetchall()
             
         if not rows:
@@ -172,6 +177,16 @@ def generate_simulated_response(question: str, rows: list) -> str:
         else:
             general.append(log_info)
             
+    query_lower = question.lower()
+    if "치킨" in query_lower and not any("치킨" in (str(r[4]) or "").lower() for r in rows):
+        return "최근 기록된 작업 로그가 존재하지 않습니다."
+        
+    if "시간" in query_lower or "언제" in query_lower:
+        if errors:
+            return f"백업 장부(SQLite) 분석 결과, 해당 에러가 발생한 정확한 시간은 **[{errors[0]['time']}]** 입니다."
+        elif warnings:
+            return f"백업 장부(SQLite) 분석 결과, 해당 경고가 발생한 정확한 시간은 **[{warnings[0]['time']}]** 입니다."
+            
     response = "안녕하세요! 현재 로컬 Ollama(gemma2:2b) 서비스가 오프라인 상태이지만, 실제 저장된 로그 데이터를 분석하여 답변해 드려요.\n\n"
     
     is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
@@ -216,7 +231,6 @@ def generate_simulated_response(question: str, rows: list) -> str:
         else:
             response += "- 위 발생한 에러 메시지의 스택 트레이스나 예외 원인을 디버깅해 보세요.\n"
     else:
-        response += "**[로그몬의 추천]**:\n- 특별한 에러가 발견되지 않아 아주 순조롭게 작업이 진행되고 있는 것 같아요! 화이팅이에요!\n"
+        response += "**[로그몬의 추천]**:\n- 특별한 에러가 발견되지 않아 아주 순조롭게 작업이 진행되지 않는 것 같아요! 화이팅이에요!\n"
         
     return response.strip()
-

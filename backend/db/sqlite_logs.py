@@ -152,3 +152,20 @@ def delete_all_logs_by_user(user_key: str) -> int:
         raise
     finally:
         conn.close()
+
+def vacuum_db() -> None:
+    """
+    DELETE 수행 후 실제 디스크상의 빈 공간을 환수하기 위해 VACUUM 명령을 실행합니다.
+    """
+    conn = get_connection()
+    try:
+        # SQLite의 VACUUM은 트랜잭션 밖에서 실행해야 하므로 isolation_level을 None으로 설정합니다.
+        conn.isolation_level = None
+        cursor = conn.cursor()
+        cursor.execute("VACUUM;")
+        logger.info("SQLite VACUUM 실행 완료 - 디스크 공간 최적화 완료")
+    except sqlite3.Error as e:
+        logger.error(f"SQLite VACUUM 실행 중 에러 발생: {e}")
+    finally:
+        conn.close()
+

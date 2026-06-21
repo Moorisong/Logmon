@@ -4,6 +4,7 @@ from backend.db.sqlite_logs import (
     cleanup_ttl_logs,
     cleanup_old_logs,
     delete_all_logs_by_user,
+    vacuum_db,
 )
 from backend.db.sqlite_stats import (
     get_total_db_size_mb,

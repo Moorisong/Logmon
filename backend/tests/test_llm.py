@@ -84,7 +84,7 @@ async def test_ask_rag_agent_with_context(mock_generate, mock_query):
         event_type="ERROR",
         start_time=None,
         end_time=None,
-        keywords=[]
+        keywords=['error', 'error', '에러', '오류', '실패', 'fail']
     )
 
     

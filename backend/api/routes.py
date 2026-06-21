@@ -148,27 +148,34 @@ async def upload_log(
     }
 
 def run_capacity_check_pipeline():
-    from backend.db.sqlite_handler import get_total_db_size_mb, cleanup_old_logs, cleanup_ttl_logs
+    from backend.db.sqlite_handler import get_total_db_size_mb, cleanup_old_logs, cleanup_ttl_logs, vacuum_db
     from backend.db.chroma_handler import delete_vectors_by_log_ids
     
     try:
         ttl_deleted_ids = cleanup_ttl_logs()
         if ttl_deleted_ids:
             delete_vectors_by_log_ids(ttl_deleted_ids)
+            # TTL 정리 후에도 용량 확보를 위해 vacuum을 수행합니다.
+            vacuum_db()
             
         max_mb = 500.0
-        while True:
+        # 최대 5회만 반복하여 무한 루프로 인한 데이터 전량 증발을 원천 차단합니다.
+        for _ in range(5):
             current_mb = get_total_db_size_mb()
             if current_mb > max_mb:
                 logger.info(f"Hard Cap 초과 (현재: {current_mb:.2f}MB / 최대: {max_mb}MB). FIFO 클리닝 시작...")
-                fifo_deleted_ids = cleanup_old_logs(limit=100)
+                # 지우는 단위를 100건에서 1,000건으로 확대하여 신속히 용량을 확보합니다.
+                fifo_deleted_ids = cleanup_old_logs(limit=1000)
                 if not fifo_deleted_ids:
                     break
                 delete_vectors_by_log_ids(fifo_deleted_ids)
+                # SQLite 삭제 레코드의 디스크 공간을 반환하여 다음 루프에서 파일 크기 축소분이 반영되도록 합니다.
+                vacuum_db()
             else:
                 break
     except Exception as e:
         logger.error(f"용량 체크 파이프라인 에러: {e}")
+
 
 @router.post("/chat", status_code=status.HTTP_200_OK)
 async def chat_with_logmon(

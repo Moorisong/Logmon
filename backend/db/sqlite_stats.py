@@ -135,6 +135,8 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         current_db_mb = get_total_db_size_mb()
         max_db_mb = 500.0
             
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         return {
             "total_logs": total_logs,
             "today_tokens": today_tokens,
@@ -144,16 +146,18 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
             "total_lines": total_lines,
             "total_bytes": total_bytes,
             "last_sync_time": last_sync_time,
+            "server_time": now_str,
             "current_db_mb": round(current_db_mb, 2),
             "max_db_mb": max_db_mb,
             "is_agent_installed": is_agent_installed
         }
     except sqlite3.Error as e:
         logger.error(f"대시보드 통계 집계 중 에러 발생: {e}")
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {
             "total_logs": 0, "today_tokens": 0, "has_code_ratio": 0.0, "trend_7d": [],
             "uptime_days": 0, "total_lines": 0, "total_bytes": 0, "last_sync_time": None,
-            "current_db_mb": 0.0, "max_db_mb": 500.0, "is_agent_installed": False
+            "server_time": now_str, "current_db_mb": 0.0, "max_db_mb": 500.0, "is_agent_installed": False
         }
     finally:
         conn.close()

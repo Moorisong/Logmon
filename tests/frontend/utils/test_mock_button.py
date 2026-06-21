@@ -16,7 +16,14 @@ def test_local_env_detection():
     with patch.dict(os.environ, {"LOGMON_ENV": "production"}):
         backend_url_prod = "https://logmon.haroo.site"
         env_val = os.getenv("LOGMON_ENV", "local")
-        is_local_prod = "localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod or env_val == "local"
+        is_local_prod = ("localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod or env_val == "local") and "haroo.site" not in backend_url_prod
+        assert is_local_prod is False
+
+    # 외부 도메인이고 LOGMON_ENV가 local이어도 로컬 환경이 아닌 것으로 탐지하는지 테스트 (고도화 방어 코드 검증)
+    with patch.dict(os.environ, {"LOGMON_ENV": "local"}):
+        backend_url_prod = "https://logmon.haroo.site"
+        env_val = os.getenv("LOGMON_ENV", "local")
+        is_local_prod = ("localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod or env_val == "local") and "haroo.site" not in backend_url_prod
         assert is_local_prod is False
 
 def test_mock_data_structure():

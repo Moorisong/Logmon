@@ -3,15 +3,18 @@ import streamlit as st
 from frontend.utils.image_helper import get_base64_image
 from frontend.utils.chart_renderer import render_trend_chart
 
-def format_sync_time(last_sync_time_str: str) -> str:
+def format_sync_time(last_sync_time_str: str, server_time_str: str = None) -> str:
     if not last_sync_time_str:
         return "데이터 없음"
     try:
         last_dt = datetime.datetime.strptime(last_sync_time_str, "%Y-%m-%d %H:%M:%S")
-        now = datetime.datetime.now()
+        if server_time_str:
+            now = datetime.datetime.strptime(server_time_str, "%Y-%m-%d %H:%M:%S")
+        else:
+            now = datetime.datetime.now()
         diff = int((now - last_dt).total_seconds())
         if diff < 60:
-            return "방금 전 (동기화 중 🟢)"
+            return "방금 전"
         elif diff < 3600:
             return f"{diff // 60}분 전 (정상)"
         elif diff < 86400:
@@ -48,7 +51,7 @@ def render_dashboard(stats: dict):
         </div>
         """, unsafe_allow_html=True)
     with col3:
-        sync_str = format_sync_time(stats.get('last_sync_time'))
+        sync_str = format_sync_time(stats.get('last_sync_time'), stats.get('server_time'))
         st.markdown(f"""
         <div class='glass-card'>
             <div class='glass-title'><img src="data:image/png;base64,{sync_b64}" class="icon-img"> 가장 최신 동기화 시간</div>

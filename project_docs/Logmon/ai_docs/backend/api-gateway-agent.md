@@ -83,6 +83,7 @@ async def upload_log(payload: dict, api_key: str = Depends(verify_api_key)):
   2. `total_lines` 및 `total_bytes`: 에이전트를 통해 수집된 누적 로그 라인 수 및 바이트 크기
   3. `last_sync_time`: 가장 마지막으로 로그가 들어온 시각 (ISO 포맷 또는 경과 시간)
   4. `current_db_mb` 및 `max_db_mb`: 현재 SQLite+Chroma 누적 DB 용량 및 최대 하드캡 상한선(예: 500). 프론트엔드 용량 게이지 렌더링용.
+  5. `server_time`: 프론트엔드 타임존 괴리 및 동기화 지연 오인 해결을 위해 제공하는 백엔드 서버의 현재 시각 (포맷: `%Y-%m-%d %H:%M:%S`).
 
 #### 5단계: Docker 배포 환경 구축 및 자원 제한
 * `docker-compose.yml`을 통해 `logmon-ui`, `logmon-backend`, `logmon-ollama` 서비스를 통합 관리합니다.

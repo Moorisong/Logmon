@@ -87,7 +87,8 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
                 size=9,
                 color="#64748B"
             )
-        )
+        ),
+        transition=dict(duration=0)
     )
     
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})

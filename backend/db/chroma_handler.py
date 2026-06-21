@@ -11,7 +11,7 @@ def get_chroma_dir():
     return os.getenv("LOGMON_CHROMA_DIR", "/app/data/chroma")
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-EMBEDDING_MODEL = "bge-small-en-v1.5"
+EMBEDDING_MODEL = "nomic-embed-text"
 COLLECTION_NAME = "ide_logs"
 
 # Chroma DB 클라이언트 지연 초기화

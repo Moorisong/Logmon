@@ -1,12 +1,12 @@
 # 🤖 llm-rag-agent.md - AI 개발 가이드
 
-이 문서는 Ollama 기반 로컬 LLM(Gemma 2 2B) 및 초경량 임베딩 모델(bge-small-en-v1.5) 연동, Chroma DB 시맨틱 검색 결합 하이브리드 RAG 챗봇 엔진 구축을 위한 AI 에이전트용 설계 지침입니다.
+이 문서는 Ollama 기반 로컬 LLM(Gemma 2 2B) 및 초경량 임베딩 모델(nomic-embed-text) 연동, Chroma DB 시맨틱 검색 결합 하이브리드 RAG 챗봇 엔진 구축을 위한 AI 에이전트용 설계 지침입니다.
 
 ---
 
 ## 📝 1. 연동 기획 명세 ([Logmon-architecture.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/system/Logmon-architecture.md), [Logmon-db-specification.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/database/Logmon-db-specification.md))
 * **로컬 LLM**: Gemma 2 2B (`gemma2:2b`)
-* **임베딩**: `bge-small-en-v1.5`
+* **임베딩**: `nomic-embed-text`
 * **엔드포인트**: `http://logmon-ollama:11434` 내부 연동 (외부 노출 불가)
 * **목적**: 과거의 사용 로그 및 질문/해결 맥락을 검색하여 개발자의 과거 컨텍스트 질의에 정확하게 응답.
 
@@ -34,7 +34,7 @@ backend/
 
 #### 2단계: RAG Retrieval 파이프라인
 1. 사용자의 자연어 입력("저번에 도커 컨테이너 포트 바인딩 에러 어떻게 해결했었지?")이 들어옵니다.
-2. 입력값을 `bge-small-en-v1.5`를 통해 벡터화한 뒤, Chroma DB에서 코사인 유사도가 높은 상위 3~5개의 텍스트 청크를 쿼리합니다.
+2. 입력값을 `nomic-embed-text`를 통해 벡터화한 뒤, Chroma DB에서 코사인 유사도가 높은 상위 3~5개의 텍스트 청크를 쿼리합니다.
 3. 메타데이터(`user_key`)를 적용하여 타인의 로그 데이터가 조회되는 보안 누수를 철저히 차단합니다.
 
 #### 3단계: 프롬프트 주입 및 답변 생성

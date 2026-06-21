@@ -27,9 +27,33 @@ def test_fetch_stats_request_exception(mock_st_markdown, mock_requests_get):
     assert "잠시 점검 중이거나 쉬고 있는 것 같으니" in call_args
     assert "margin-top: 4px;" in call_args
     
-    # Assert the fallback dict is returned
+    # Assert the fallback dict is returned with is_online=False
     assert result["total_logs"] == 0
     assert result["today_tokens"] == 0
+    assert result["is_online"] is False
+
+@patch("utils.api_client.requests.get")
+def test_fetch_stats_success(mock_requests_get):
+    # Setup mock response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "total_logs": 10,
+        "today_tokens": 500,
+        "trend_7d": [],
+        "uptime_days": 2,
+        "total_lines": 100,
+        "total_bytes": 1024,
+        "last_sync_time": "2026-06-21 12:00:00"
+    }
+    mock_requests_get.return_value = mock_response
+    
+    result = fetch_stats.__wrapped__()
+    
+    # is_online=True 가 정상 병합되었는지 검증
+    assert result["is_online"] is True
+    assert result["total_logs"] == 10
+    assert result["total_lines"] == 100
 
 @patch("utils.api_client.requests.post")
 def test_send_chat_request_exception(mock_requests_post):
@@ -54,12 +78,19 @@ def test_send_chat_timeout(mock_requests_post):
     assert result == "현재 AI 엔진 서비스가 일시 정지 중이거나 과부하 상태입니다."
 
 def test_offline_ui_condition():
-    # 서버 오프라인(is_error_state) 판정 조건 테스트 (mock_stats가 없을 때 참이 되는지 검증)
-    session_state_without_mock = {}
-    is_error_state = "mock_stats" not in session_state_without_mock
-    assert is_error_state is True
+    # 1) 서버 오프라인(is_online=False)이고 mock_stats 없을 때 => 에러 상태 (블러 활성화)
+    stats_offline = {"is_online": False}
+    session_state_no_mock = {}
+    is_error_state_1 = not stats_offline.get("is_online", True) and "mock_stats" not in session_state_no_mock
+    assert is_error_state_1 is True
 
-    # 목 데이터 주입 후(mock_stats가 세션에 있을 때) 거짓이 되는지 검증
+    # 2) 서버 온라인(is_online=True)이고 mock_stats 없을 때 => 정상 상태 (블러 비활성화)
+    stats_online = {"is_online": True}
+    is_error_state_2 = not stats_online.get("is_online", True) and "mock_stats" not in session_state_no_mock
+    assert is_error_state_2 is False
+
+    # 3) 서버 오프라인(is_online=False)이지만 mock_stats 있을 때 => 모의 주입으로 정상 구동 (블러 비활성화)
     session_state_with_mock = {"mock_stats": {"uptime_days": 5}}
-    is_error_state_with_mock = "mock_stats" not in session_state_with_mock
-    assert is_error_state_with_mock is False
+    is_error_state_3 = not stats_offline.get("is_online", True) and "mock_stats" not in session_state_with_mock
+    assert is_error_state_3 is False
+

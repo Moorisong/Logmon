@@ -21,7 +21,9 @@ def fetch_stats() -> Dict[str, Any]:
     try:
         response = requests.get(url, headers=get_headers(), timeout=5.0)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        data["is_online"] = True
+        return data
     except requests.exceptions.RequestException as e:
         st.markdown(
             '<div class="stAlert" data-testid="stAlert" style="background-color: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">'
@@ -40,7 +42,8 @@ def fetch_stats() -> Dict[str, Any]:
             "uptime_days": 0,
             "total_lines": 0,
             "total_bytes": 0,
-            "last_sync_time": None
+            "last_sync_time": None,
+            "is_online": False
         }
 
 def send_chat(question: str) -> str:

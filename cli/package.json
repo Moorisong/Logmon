@@ -1,6 +1,6 @@
 {
   "name": "logmon-cli",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "LogMon Agent Auto Installer",
   "main": "index.js",
   "bin": {

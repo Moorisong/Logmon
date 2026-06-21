@@ -13,7 +13,7 @@
 SSH_USER="ksh"                           # SSH 사용자 이름
 SSH_HOST_INT="192.168.0.6"               # 홈서버 내부 IP
 SSH_HOST_EXT="125.190.25.48"             # 홈서버 외부 공인 IP
-SSH_PORT="22"                            # SSH 포트
+SSH_PORT="8193"                          # SSH 포트
 REMOTE_PROJECT_DIR="/Users/ksh/Desktop/Project/Logmon" # 홈서버 내 프로젝트 절대 경로
 DEFAULT_COMMIT_MSG="deploy: auto-deploy update" # 기본 커밋 메시지
 # --------------------------------------------------

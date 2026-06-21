@@ -2,15 +2,18 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
+# 파이썬에게 /app 폴더를 기준으로 모든 소스코드(모듈)를 찾으라고 이정표를 세워줍니다!
+ENV PYTHONPATH=/app
+
 # requirements 복사 및 설치
 COPY frontend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 소스코드 전체 복사
+# 소스코드 전체 복사 (/app/frontend/ 형태로 예쁘게 들어갑니다)
 COPY frontend/ /app/frontend/
 
 # 포트 개방
 EXPOSE 8501
 
-# Streamlit 실행
-CMD ["streamlit", "run", "frontend/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+# Streamlit 실행 (파이썬 경로 인식에 맞게 콤마 형식을 스페이스 형식으로 정리했습니다)
+CMD ["streamlit", "run", "frontend/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

@@ -33,7 +33,9 @@ else
 fi
 
 # 2. 백엔드 데이터 완전 클리닝 요청 (서버 데이터 0으로 강제 초기화)
-CONFIG_FILE="$HOME/.logmon_config.json"
+AGENT_DIR="$HOME/.logmon_agent"
+CONFIG_FILE="$AGENT_DIR/logmon_config.json"
+
 if [ -f "$CONFIG_FILE" ]; then
     B_URL=$(grep -o '"backend_url": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     A_KEY=$(grep -o '"api_key": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
@@ -47,13 +49,12 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 # 3. 관련 설정 및 캐시 파일 클리어
-CONFIG_FILE="$HOME/.logmon_config.json"
 CHECKPOINT_FILE="$HOME/.logmon_checkpoint"
 CRON_LOG="$HOME/.logmon_cron.log"
 
-if [ -f "$CONFIG_FILE" ]; then
-    rm "$CONFIG_FILE"
-    echo "🗑️  설정 파일(.logmon_config.json) 삭제 완료."
+if [ -d "$AGENT_DIR" ]; then
+    rm -rf "$AGENT_DIR"
+    echo "🗑️  에이전트 실행 디렉터리(.logmon_agent) 삭제 완료."
 fi
 
 if [ -f "$CHECKPOINT_FILE" ]; then

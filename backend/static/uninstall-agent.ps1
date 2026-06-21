@@ -33,6 +33,21 @@ $configFile = Join-Path -Path $homeDir -ChildPath ".logmon_config.json"
 $checkpointFile = Join-Path -Path $homeDir -ChildPath ".logmon_checkpoint"
 
 if (Test-Path $configFile) {
+    # 백엔드 데이터 완전 클리닝 요청
+    try {
+        $configContent = Get-Content $configFile | ConvertFrom-Json
+        $bUrl = $configContent.backend_url
+        $aKey = $configContent.api_key
+        
+        if ($bUrl -and $aKey) {
+            Write-Host "📡 서버에서 기존 누적 세션 및 벡터 로그 데이터를 원격 초기화 중..." -ForegroundColor Yellow
+            $endpoint = "$bUrl/api/logmon/uninstall"
+            Invoke-WebRequest -Method Delete -Uri $endpoint -Headers @{ "X-LogMon-API-Key" = $aKey } -ErrorAction SilentlyContinue | Out-Null
+        }
+    } catch {
+        Write-Host "⚠️ 백엔드 데이터 초기화 요청 중 오류가 발생했습니다." -ForegroundColor Yellow
+    }
+
     Remove-Item $configFile -Force
     Write-Host "🗑️  설정 파일(.logmon_config.json) 삭제 완료." -ForegroundColor Green
 }

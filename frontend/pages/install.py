@@ -44,6 +44,9 @@ else:
     # 도메인 접속 시
     base_external_url = f"http://{current_host}/api"
 
+# [★추가] 유저 세션에서 현재 로그인된 API Key 추출 (없으면 기본 개발 키 매핑)
+user_api_key = st.session_state.get("api_key", "default_dev_key")
+
 # 2. 뒤로 가기 버튼 (좌측 상단에 배치, 버튼 스타일 적용)
 st.markdown('''
     <div style="margin-top: 10px; margin-bottom: 15px;">
@@ -65,10 +68,13 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 (순수 파이썬 문자열 렌더링으로 롤백!)
+# 4. 설치 안내 콘텐츠 (환경 변수를 명령 앞단에 박아 대배달하는 완전 자동화 커맨드로 개조!)
 with st.container(border=True):
-    mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash"
-    win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\\install-agent.ps1"
+    # macOS/Linux용: 명령어 실행 전에 BACKEND_URL과 API_KEY 변수를 강제로 때려 박아 curl 파이프라인의 입력을 완벽 생략합니다.
+    mac_cmd = f'BACKEND_URL="{base_external_url}" API_KEY="{user_api_key}" curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash'
+    
+    # Windows용: 스크립트 실행 시 파라미터(-BackendUrl, -ApiKey)로 자동 넘겨주도록 주입
+    win_cmd = f'Invoke-WebRequest -Uri "{base_external_url}/api/logmon/static/install-agent.ps1" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl "{base_external_url}" -ApiKey "{user_api_key}"'
 
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 

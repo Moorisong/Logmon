@@ -38,9 +38,9 @@ echo -e "현재 브랜치: ${GREEN}${CURRENT_BRANCH}${NC}"
 echo -e "${BLUE}>>> 2. Git 변경 사항 점검...${NC}"
 git status --short
 
-# 변경 사항 유무 검증
+# 변경 사항 유무 검증 및 커밋
 if [ -z "$(git status --porcelain)" ]; then
-    echo -e "${YELLOW}[안내] 커밋할 변경 사항이 없습니다. 배포 단계로 넘어갑니다.${NC}"
+    echo -e "${YELLOW}[안내] 커밋할 변경 사항이 없습니다.${NC}"
 else
     # 변경된 파일들을 바탕으로 커밋 메시지를 적당히 자동 구성합니다.
     CHANGED_FILES=$(git diff --name-only | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')
@@ -58,11 +58,11 @@ else
     echo -e "${BLUE}>>> 3. Git 스테이징 및 커밋 진행...${NC}"
     git add .
     git commit -m "$COMMIT_MSG"
-
-    echo -e "${BLUE}>>> 4. 원격 저장소 푸시 (${CURRENT_BRANCH})...${NC}"
-    git push origin "$CURRENT_BRANCH"
-    echo -e "${GREEN}[성공] 로컬 코드 원격 저장소 푸시 완료.${NC}"
 fi
+
+echo -e "${BLUE}>>> 4. 원격 저장소 푸시 (${CURRENT_BRANCH})...${NC}"
+git push origin "$CURRENT_BRANCH"
+echo -e "${GREEN}[성공] 로컬 코드 원격 저장소 푸시 완료.${NC}"
 
 # SSH 접속 호자동 판별 (내부망 우선 접속 체크)
 echo -e "${BLUE}>>> 5. 홈서버 SSH 접속 가능 여부 체크 중...${NC}"

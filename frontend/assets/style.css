@@ -182,3 +182,28 @@ footer { visibility: hidden; }
     user-select: none;
     transition: all 0.3s ease;
 }
+
+/* 7. 대시보드로 돌아가기 뒤로가기 버튼 */
+.back-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    border-radius: 10px;
+    color: #475569 !important;
+    font-weight: 600;
+    font-size: 13px;
+    text-align: center;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+    text-decoration: none;
+}
+
+.back-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: #CBD5E1;
+    color: #1E293B !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}

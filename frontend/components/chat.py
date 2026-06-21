@@ -90,13 +90,17 @@ def render_chat_interface(is_error_state: bool, is_local: bool):
     user_avatar = f"data:image/png;base64,{user_avatar_b64}"
     assistant_avatar = f"data:image/png;base64,{bot_avatar_b64}"
 
-    # 기존 대화 렌더링
-    for msg in st.session_state.messages:
-        avatar = user_avatar if msg["role"] == "user" else assistant_avatar
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
+    # 대화 기록을 렌더링할 컨테이너 생성
+    chat_container = st.container()
 
-    # 채팅 입력창
+    # 기존 대화 렌더링
+    with chat_container:
+        for msg in st.session_state.messages:
+            avatar = user_avatar if msg["role"] == "user" else assistant_avatar
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.markdown(msg["content"])
+
+    # 채팅 입력창 (컨테이너 하단에 위치하도록 설정)
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([0.85, 0.15])
         with col1:
@@ -105,14 +109,16 @@ def render_chat_interface(is_error_state: bool, is_local: bool):
             submit_btn = st.form_submit_button("전송", use_container_width=True, disabled=is_error_state)
 
     if submit_btn and user_query:
-        # 유저 메시지 화면 추가
+        # 유저 메시지 화면 추가 (컨테이너 내부에 렌더링)
         st.session_state.messages.append({"role": "user", "content": user_query})
-        with st.chat_message("user", avatar=user_avatar):
-            st.markdown(user_query)
+        with chat_container:
+            with st.chat_message("user", avatar=user_avatar):
+                st.markdown(user_query)
             
-        # AI 봇 응답 (스피너)
-        with st.chat_message("assistant", avatar=assistant_avatar):
-            with st.spinner("과거 로그 검색 및 AI 분석 중..."):
-                ai_answer = send_chat(user_query)
-                st.markdown(ai_answer)
-                st.session_state.messages.append({"role": "assistant", "content": ai_answer})
+            # AI 봇 응답 (스피너) (컨테이너 내부에 렌더링)
+            with st.chat_message("assistant", avatar=assistant_avatar):
+                with st.spinner("과거 로그 검색 및 AI 분석 중..."):
+                    ai_answer = send_chat(user_query)
+                    st.markdown(ai_answer)
+                    st.session_state.messages.append({"role": "assistant", "content": ai_answer})
+

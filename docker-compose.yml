@@ -20,7 +20,7 @@ services:
     ports:
       - "3008:8000"
     env_file:
-      - .env  # <── 이제 홈서버의 .env 비밀번호를 확실하게 훔쳐옵니다!
+      - .env
     environment:
       - LOGMON_DB_DIR=/app/data
       - LOGMON_CHROMA_DIR=/app/chroma_data
@@ -46,8 +46,11 @@ services:
     container_name: logmon-ui
     ports:
       - "3007:8501"
+    env_file:
+      - .env  # <── [추가] 프론트엔드 컨테이너도 .env 파일을 읽도록 설정합니다.
     environment:
       - BACKEND_URL=http://logmon-backend:8000
+      - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}  # <── [추가] 프론트엔드가 백엔드 API를 호출할 때 헤더에 실어 보낼 키를 전달합니다.
     networks:
       - logmon-network
     depends_on:

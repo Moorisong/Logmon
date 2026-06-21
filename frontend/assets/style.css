@@ -1,14 +1,12 @@
 /* 
-  Logmon Trendy Neumorphism Stylesheet
-  - Main Color: Slate Blue (#829AB1)
-  - Background: Trendy Cool Gray (#E0E5EC)
+  Logmon Modern White Glassmorphism Stylesheet
 */
 
 /* 1. 배경 및 전역 폰트 재정의 */
 .stApp {
-    background-color: #E0E5EC;
-    font-family: 'Inter', 'Apple SD Gothic Neo', sans-serif;
-    color: #243B53;
+    background-color: #F8FAFC; /* Clean White/Light Gray */
+    font-family: 'Inter', 'Outfit', 'Apple SD Gothic Neo', sans-serif;
+    color: #1E293B; /* Deep Slate Black */
 }
 
 /* Streamlit 기본 헤더, 여백 및 사이드바 컨트롤 숨기기 */
@@ -17,63 +15,166 @@ header { visibility: hidden; }
 footer { visibility: hidden; }
 [data-testid="collapsedControl"] { display: none; }
 [data-testid="stSidebar"] { display: none; }
+[data-testid="stHeaderActionElements"] { display: none !important; } /* 제목 옆 링크 아이콘 제거 */
 
-/* 2. 뉴모피즘 엠보싱 카드 (스코어카드용) */
-.neumorphic-card {
-    background-color: #E0E5EC;
+/* 2. 글래스모피즘 엠보싱 카드 (스코어카드용) */
+.glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
     border-radius: 16px;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
     padding: 24px;
-    box-shadow: 9px 9px 16px rgba(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5);
     margin-bottom: 20px;
-    text-align: center;
-    transition: all 0.2s ease-in-out;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
-.neumorphic-card:hover {
-    box-shadow: inset 6px 6px 10px rgba(163,177,198,0.5), inset -6px -6px 10px rgba(255,255,255, 0.5);
+.glass-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
 }
 
-.neumorphic-title {
-    font-size: 14px;
-    color: #627D98;
+.glass-title {
+    font-size: 15px;
+    color: #64748B;
     margin-bottom: 8px;
     font-weight: 600;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.neumorphic-value {
-    font-size: 32px;
-    color: #829AB1; /* Slate Blue */
+.glass-value {
+    font-size: 28px;
+    background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
     font-weight: 800;
 }
 
-/* 3. 챗 인터페이스 커스텀 (각진 사각형) */
+/* 3. 챗 인터페이스 커스텀 */
 /* 사용자의 메시지 버블 */
 [data-testid="stChatMessage"]:nth-child(even) {
-    background-color: #F0B2B6; /* Vintage Rose Pink */
-    border-radius: 12px;
-    padding: 10px 15px;
+    background: linear-gradient(135deg, #38BDF8 0%, #3B82F6 100%);
+    border-radius: 16px;
+    padding: 12px 18px;
     margin: 10px 0;
-    box-shadow: 5px 5px 10px rgba(163,177,198,0.4), -5px -5px 10px rgba(255,255,255, 0.5);
-    color: #243B53;
+    box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+    color: #ffffff;
+    border: none;
 }
 
 /* AI(로그몬)의 메시지 버블 */
 [data-testid="stChatMessage"]:nth-child(odd) {
-    background-color: #829AB1; /* Slate Blue */
-    border-radius: 12px;
-    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 16px;
+    padding: 12px 18px;
     margin: 10px 0;
-    box-shadow: 5px 5px 10px rgba(163,177,198,0.4), -5px -5px 10px rgba(255,255,255, 0.5);
-    color: #ffffff;
+    box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05);
+    color: #1E293B;
 }
 
-/* 챗 인풋 창 고정 및 뉴모피즘 처리 */
+/* 챗 아바타 아이콘 제거 및 레이아웃 조정 */
+[data-testid="chatAvatarIcon"],
+[data-testid="stChatMessageAvatar"] {
+    display: none !important;
+}
+[data-testid="stChatMessageContent"] {
+    margin-left: 0 !important;
+}
+
+/* 챗 인풋 창 고정 및 둥근 스타일 처리 */
 [data-testid="stChatInput"] {
-    background-color: #E0E5EC !important;
-    border-radius: 12px !important;
-    box-shadow: inset 6px 6px 10px rgba(163,177,198,0.5), inset -6px -6px 10px rgba(255,255,255, 0.5) !important;
-    border: none !important;
+    background-color: #FFFFFF !important;
+    border-radius: 24px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+    border: 1px solid #E2E8F0 !important;
+    padding: 4px 10px !important;
+}
+
+/* 로고 및 아이콘 정렬 유틸리티 */
+.icon-img {
+    vertical-align: middle;
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    mix-blend-mode: multiply; /* 흰색 배경 투명화 */
+}
+
+.header-icon {
+    vertical-align: middle;
+    width: 50px;
+    height: 50px;
+    margin-right: 12px;
+    mix-blend-mode: multiply; /* 흰색 배경 투명화 */
+}
+
+/* 5. 에이전트 설치 버튼 스타일 및 효과 */
+@keyframes glow-shake {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.4), 0 2px 6px rgba(59, 130, 246, 0.2);
+        transform: scale(1) rotate(0deg);
+    }
+    20% {
+        transform: scale(1.02) rotate(1deg);
+    }
+    40% {
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 4px 12px rgba(59, 130, 246, 0.3);
+        transform: scale(1.03) rotate(-1deg);
+    }
+    60% {
+        transform: scale(1.02) rotate(1deg);
+    }
+    80% {
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 4px 12px rgba(59, 130, 246, 0.3);
+        transform: scale(1.03) rotate(-1deg);
+    }
+}
+
+.install-btn {
+    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+    border: none;
+    border-radius: 12px;
+    padding: 10px 18px;
+    text-align: center;
+    color: #FFFFFF !important;
+    font-weight: bold;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.4), 0 2px 6px rgba(59, 130, 246, 0.2);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-block;
+    width: 100%;
+    box-sizing: border-box;
+    cursor: pointer;
+    animation: glow-shake 3s infinite ease-in-out;
+}
+
+.install-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 6px 18px rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, #60A5FA 0%, #2563EB 100%);
+    animation: none; /* 호버 시에는 셰이크 및 발광 펄스를 멈추고 고정 */
+}
+
+.install-btn:active {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.4), 0 2px 6px rgba(59, 130, 246, 0.2);
+}
+
+/* st.chat_input 자동 포커싱으로 인해 페이지 로드/새로고침 시 브라우저가 강제로 하단 스크롤하는 현상 방지 */
+[data-testid="stChatInput"] input,
+[data-testid="stChatInput"] textarea,
+.stChatInputContainer,
+[data-testid="stChatInput"] {
+    scroll-margin-bottom: 100vh !important;
+    scroll-margin-top: 100vh !important;
 }
 
 

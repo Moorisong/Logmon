@@ -45,7 +45,10 @@ if not base_external_url:
     port = current_host.split(":")[1] if ":" in current_host else ""
 
     if host_name in ["localhost", "127.0.0.1"]:
-        base_external_url = "http://localhost:3008/api/logmon"
+        if BACKEND_URL and ("localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL):
+            base_external_url = f"{BACKEND_URL}/api/logmon"
+        else:
+            base_external_url = "http://localhost:3008/api/logmon"
     elif host_name.startswith("192.168.") or host_name.startswith("10."):
         base_external_url = f"http://{host_name}:3008/api/logmon"
     else:
@@ -87,24 +90,35 @@ with st.container(border=True):
         st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
         
         # 유저 화면 상자에는 명품 감성의 주소 노출
-        visible_npx = "npx @thiagomiki/logmon-cli"
+        visible_npx = "npx @thiagomiki/logmon-cli@latest"
         
         # 백엔드 URL이 기본 로컬 주소인 경우 URL 매개변수 전송을 과감히 생략하여 간결함 극대화
         if "localhost" in base_external_url or "127.0.0.1" in base_external_url:
-            hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key}"
+            hidden_npx = f"npx @thiagomiki/logmon-cli@latest {user_api_key}"
         else:
-            hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key} {base_external_url}"
+            hidden_npx = f"npx @thiagomiki/logmon-cli@latest {user_api_key} {base_external_url}"
+        
+        copy_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+        check_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
         
         npx_html = f"""
-        <div style="background-color: #0F172A; padding: 14px 18px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
-            <span style="color: #38BDF8; font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">{visible_npx}</span>
-            <button id="copy-npx-btn" style="background: #334155; color: #E2E8F0; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">📋 복사하기</button>
+        <style>
+        #copy-npx-btn:hover {{
+            background-color: #CBD5E1 !important;
+            color: #1E293B !important;
+        }}
+        </style>
+        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+            <span style="color: #0F172A; font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">{visible_npx}</span>
+            <button id="copy-npx-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="클립보드에 복사">{copy_svg}</button>
         </div>
         <script>
+        const copySvg = `{copy_svg}`;
+        const checkSvg = `{check_svg}`;
         document.getElementById('copy-npx-btn').addEventListener('click', function() {{
             navigator.clipboard.writeText(`{hidden_npx}`).then(() => {{
-                this.innerHTML = "복사 완료! ✓"; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
-                setTimeout(() => {{ this.innerHTML = "📋 복사하기"; this.style.background = "#334155"; this.style.color = "#E2E8F0"; }}, 2000);
+                this.innerHTML = checkSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                setTimeout(() => {{ this.innerHTML = copySvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
             }});
         }});
         </script>
@@ -116,7 +130,31 @@ with st.container(border=True):
         st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
         
         win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
-        st.code(win_cmd_clean, language="powershell")
+        visible_win = "powershell -Command \"iwr -Uri [LogMon_Server] -OutFile install-agent.ps1...\""
+        
+        win_html = f"""
+        <style>
+        #copy-win-install-btn:hover {{
+            background-color: #CBD5E1 !important;
+            color: #1E293B !important;
+        }}
+        </style>
+        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_win}</span>
+            <button id="copy-win-install-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="PowerShell 명령어 복사">{copy_svg}</button>
+        </div>
+        <script>
+        const copyWinSvg = `{copy_svg}`;
+        const checkWinSvg = `{check_svg}`;
+        document.getElementById('copy-win-install-btn').addEventListener('click', function() {{
+            navigator.clipboard.writeText(`{win_cmd_clean}`).then(() => {{
+                this.innerHTML = checkWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                setTimeout(() => {{ this.innerHTML = copyWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+            }});
+        }});
+        </script>
+        """
+        components.html(win_html, height=70)
 
 # 5. 수동 파일 업로드 섹션
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
@@ -160,68 +198,62 @@ with st.container(border=True):
     
     with tab_un_mac:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
-        st.code("curl -sL ****** | bash", language="bash")
+        st.markdown("**1. 아래 제거 명령어를 복사하여 터미널에 실행하십시오.**")
         
-        real_mac_cmd = f"curl -sL {base_external_url}/static/uninstall-agent.sh | bash"
+        real_mac_cmd = f"npx @thiagomiki/logmon-cli@latest uninstall {base_external_url}"
+        visible_un_mac = "npx @thiagomiki/logmon-cli@latest uninstall"
         
-        mac_html_template = """
-            <button id="copy-mac-btn" style="
-                background: linear-gradient(135deg, #3B82F6, #2563EB); 
-                color: white; border: none; padding: 10px 18px; 
-                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
-            ">
-                📋 제거 명령어 복사하기
-            </button>
-            <script>
-            const btn = document.getElementById('copy-mac-btn');
-            btn.addEventListener('click', () => {
-                navigator.clipboard.writeText("REAL_MAC_CMD").then(() => {
-                    const origText = btn.innerHTML;
-                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
-                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
-                    setTimeout(() => {
-                        btn.innerHTML = origText;
-                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
-                    }, 2000);
-                });
-            });
-            </script>
+        un_mac_html = f"""
+        <style>
+        #copy-un-mac-btn:hover {{
+            background-color: #CBD5E1 !important;
+            color: #1E293B !important;
+        }}
+        </style>
+        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_mac}</span>
+            <button id="copy-un-mac-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
+        </div>
+        <script>
+        const copyUnMacSvg = `{copy_svg}`;
+        const checkUnMacSvg = `{check_svg}`;
+        document.getElementById('copy-un-mac-btn').addEventListener('click', function() {{
+            navigator.clipboard.writeText(`{real_mac_cmd}`).then(() => {{
+                this.innerHTML = checkUnMacSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                setTimeout(() => {{ this.innerHTML = copyUnMacSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+            }});
+        }});
+        </script>
         """
-        components.html(mac_html_template.replace("REAL_MAC_CMD", real_mac_cmd), height=60)
+        components.html(un_mac_html, height=70)
         
     with tab_un_win:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 관리자 권한의 PowerShell 창에서 복사 버튼을 클릭하여 실행하십시오.**")
-        st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
+        st.markdown("**1. 관리자 권한의 PowerShell 창에서 아래 명령어를 실행하십시오.**")
         
         real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        visible_un_win = "powershell -Command \"iwr -Uri [LogMon_Server]/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1...\""
         
-        win_html_template = """
-            <button id="copy-win-btn" style="
-                background: linear-gradient(135deg, #3B82F6, #2563EB); 
-                color: white; border: none; padding: 10px 18px; 
-                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
-            ">
-                📋 제거 명령어 복사하기
-            </button>
-            <script>
-            const btn = document.getElementById('copy-win-btn');
-            btn.addEventListener('click', () => {
-                navigator.clipboard.writeText("REAL_WIN_CMD").then(() => {
-                    const origText = btn.innerHTML;
-                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
-                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
-                    setTimeout(() => {
-                        btn.innerHTML = origText;
-                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
-                    }, 2000);
-                });
-            });
-            </script>
+        un_win_html = f"""
+        <style>
+        #copy-un-win-btn:hover {{
+            background-color: #CBD5E1 !important;
+            color: #1E293B !important;
+        }}
+        </style>
+        <div style="background-color: #F1F5F9; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace;">
+            <span style="color: #0F172A; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%;">{visible_un_win}</span>
+            <button id="copy-un-win-btn" style="background: #E2E8F0; color: #475569; border: none; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="제거 명령어 복사">{copy_svg}</button>
+        </div>
+        <script>
+        const copyUnWinSvg = `{copy_svg}`;
+        const checkUnWinSvg = `{check_svg}`;
+        document.getElementById('copy-un-win-btn').addEventListener('click', function() {{
+            navigator.clipboard.writeText(`{real_win_cmd}`).then(() => {{
+                this.innerHTML = checkUnWinSvg; this.style.background = "#10B981"; this.style.color = "#FFFFFF";
+                setTimeout(() => {{ this.innerHTML = copyUnWinSvg; this.style.background = "#E2E8F0"; this.style.color = "#475569"; }}, 2000);
+            }});
+        }});
+        </script>
         """
-        components.html(win_html_template.replace("REAL_WIN_CMD", real_win_cmd), height=60)
+        components.html(un_win_html, height=70)

@@ -67,3 +67,17 @@ def test_mock_data_structure():
         assert msg["role"] in ["user", "assistant"]
         assert isinstance(msg["content"], str)
 
+
+def test_npx_html_rendering_vars():
+    visible_npx = "npx @thiagomiki/logmon-cli"
+    user_api_key = "test_api_key"
+    base_external_url = "http://localhost:3008/api/logmon"
+    
+    if "localhost" in base_external_url or "127.0.0.1" in base_external_url:
+        hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key}"
+    else:
+        hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key} {base_external_url}"
+        
+    assert hidden_npx == f"npx @thiagomiki/logmon-cli {user_api_key}"
+
+

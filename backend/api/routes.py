@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response
+from fastapi.responses import FileResponse  # <-- 정적 파일 직통 스트리밍 서빙을 위해 추가
 from pydantic import BaseModel
 
 from backend.api.dependencies import verify_api_key
@@ -57,7 +58,7 @@ async def get_install_script():
             detail="Installation script source file not found"
         )
     
-    # [★보안/안전장치] 쉘 템플릿 파일 내부 텍스트가 중복 누적되어 있을 경우, 첫 번째 온전한 스크립트 블록만 추출합니다.
+    # 쉘 템플릿 파일 내부 텍스트 중복 누적 완벽 차단 안전장치
     if "#!/usr/bin/env bash" in content:
         parts = content.split("#!/usr/bin/env bash")
         if len(parts) > 2:
@@ -66,14 +67,38 @@ async def get_install_script():
     allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
     primary_key = allowed_keys.split(",")[0].strip() 
     
-    # 가비아 SSL 서브도메인 고정
+    # 가비아 SSL 서브도메인을 베이스 URL로 안전하게 고정
     server_url = "https://logmon.haroo.site" 
 
-    # 쉘 스크립트 내부 템플릿 변수를 서버 환경 변수로 치환
+    # 쉘 스크립트 내부 템플릿 변수를 서버 환경 변수로 완벽 치환
     content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
     content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
 
     return Response(content=content, media_type="text/plain")
+
+# [★핵심 기능] Nginx가 안전하게 토스해주는 /api/logmon/static/ 파일 요청을 직접 받아서 파일로 안전하게 응답합니다.
+@router.get("/static/{file_name}")
+async def get_static_file(file_name: str):
+    """
+    에이전트 구동에 필요한 핵심 파이썬 소스 파일들을 
+    도커 내부 경로에서 직접 탐색하여 스트리밍 다운로드 서빙합니다.
+    """
+    static_dir = "backend/static"
+    if not os.path.exists(static_dir):
+        static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+        
+    file_path = os.path.join(static_dir, file_name)
+    
+    if not os.path.exists(file_path):
+        logger.error(f"요청된 정적 파일을 찾을 수 없습니다: {file_path}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"File {file_name} not found in static repository."
+        )
+        
+    # 파일 확장자에 따른 적절한 미디어 타입 반환
+    media_type = "application/x-python" if file_name.endswith(".py") else "text/plain"
+    return FileResponse(path=file_path, media_type=media_type, filename=file_name)
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_log(

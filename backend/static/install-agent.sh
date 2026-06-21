@@ -32,13 +32,14 @@ cat > "$CONFIG_FILE" <<EOF
 EOF
 
 # 4. 백엔드 서버로부터 최신 에이전트 소스 파일들 다운로드
+# [★교정] Nginx 차단 문제를 우회하기 위해 다이렉트 파일 서빙 라우터 API 주소인 /api/logmon/static/ 을 조준합니다.
 AGENT_SCRIPT_PATH="$AGENT_DIR/agent_main.py"
 mkdir -p "$AGENT_DIR/core"
 
-curl -sL "$BACKEND_URL/static/agent_main.py" -o "$AGENT_SCRIPT_PATH"
-curl -sL "$BACKEND_URL/static/config.py" -o "$AGENT_DIR/config.py"
-curl -sL "$BACKEND_URL/static/sender.py" -o "$AGENT_DIR/core/sender.py"
-curl -sL "$BACKEND_URL/static/checkpoint.py" -o "$AGENT_DIR/core/checkpoint.py"
+curl -sL "$BACKEND_URL/api/logmon/static/agent_main.py" -o "$AGENT_SCRIPT_PATH"
+curl -sL "$BACKEND_URL/api/logmon/static/config.py" -o "$AGENT_DIR/config.py"
+curl -sL "$BACKEND_URL/api/logmon/static/sender.py" -o "$AGENT_DIR/core/sender.py"
+curl -sL "$BACKEND_URL/api/logmon/static/checkpoint.py" -o "$AGENT_DIR/core/checkpoint.py"
 
 # 다운로드 검증
 if [ ! -f "$AGENT_SCRIPT_PATH" ] || grep -q "Not Found" "$AGENT_SCRIPT_PATH"; then
@@ -114,5 +115,5 @@ curl -s -X POST \
   -d "{\"source_tool\": \"Agent CLI\", \"event_type\": \"AGENT_INSTALL\", \"raw_message\": \"Logmon 에이전트 설치 완료\"}" \
   "$BACKEND_URL/api/logmon/upload" >/dev/null || true
 
-# 8. 설치 완료 (출력 및 이스터에그는 호출부 CLI로 위임)
+# 8. 설치 완료
 exit 0

@@ -99,8 +99,8 @@ def render_empty_state():
         <img src="data:image/png;base64,{box_b64}" style="width: 90px; height: 90px; margin-bottom: 25px; filter: grayscale(40%) opacity(80%);">
         <h2 style="color: #1E293B; font-size: 32px; margin-bottom: 15px; font-weight: 700; letter-spacing: -0.5px;">에이전트가 연결되지 않았어요</h2>
         <p style="color: #64748B; font-size: 17px; margin-bottom: 40px; text-align: center; max-width: 550px; line-height: 1.6;">
-            LogMon은 로컬 환경의 로그를 실시간으로 수집하고<br>AI를 통해 분석해주는 스마트 모니터링 대시보드입니다.<br><br>
-            지금 에이전트를 설치하고 터미널의 모든 것을 한눈에 파악해 보세요!
+            LogMon은 로컬 IDE(Cursor/Antigravity 등)의 로그를 실시간으로 수집하고 분석해주는 모니터링 대시보드입니다.<br><br>
+            지금 에이전트를 설치하여 개발 환경의 로그와 연동 상태를 실시간으로 확인해보세요!
         </p>
         <a href="/install?mode=install" target="_self" style="text-decoration: none;">
             <div style="background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: white; padding: 16px 36px; border-radius: 16px; font-size: 18px; font-weight: 700; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: inline-block;">

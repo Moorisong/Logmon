@@ -21,15 +21,12 @@ data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
 # [★파이썬 기반 동적 주소 추출] 버전을 전혀 타지 않는 안전한 파이썬 방식으로 호스트 추출
 current_host = BACKEND_URL  # 기본값 세팅
 try:
-    # Streamlit 내부 쿼리 파라미터나 헤더 컨텍스트가 존재할 때 안전하게 추출 시도
     if hasattr(st, "context") and hasattr(st.context, "headers"):
         current_host = st.context.headers.get("host", BACKEND_URL)
     else:
-        # 구버전 세팅일 경우 안전하게 서버 환경변수나 BACKEND_URL 기반으로 가공
         from streamlit.runtime.scriptrunner import get_script_run_ctx
         ctx = get_script_run_ctx()
         if ctx:
-            # 외부망에서 유저가 찌르고 들어온 포트포워딩 주소를 동적으로 파싱하기 위한 안전한 폴백
             current_host = BACKEND_URL
 except Exception:
     current_host = BACKEND_URL
@@ -38,10 +35,8 @@ except Exception:
 if "localhost" in current_host or "127.0.0.1" in current_host:
     base_external_url = "http://localhost:3008"
 elif ":" in current_host:
-    # 예: 125.190.25.48:3007 -> 외부 포트 3008로 변경
     base_external_url = f"http://{current_host.split(':')[0]}:3008"
 else:
-    # 도메인 접속 시
     base_external_url = f"http://{current_host}/api"
 
 # [★추가] 유저 세션에서 현재 로그인된 API Key 추출 (없으면 기본 개발 키 매핑)
@@ -68,25 +63,24 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 (환경 변수를 명령 앞단에 박아 대배달하는 완전 자동화 커맨드로 개조!)
+# 4. 설치 안내 콘텐츠 (Streamlit 내부 마크다운 파싱 왜곡 버그 차단 조립)
 with st.container(border=True):
-    # macOS/Linux용: 명령어 실행 전에 BACKEND_URL과 API_KEY 변수를 강제로 때려 박아 curl 파이프라인의 입력을 완벽 생략합니다.
-    mac_cmd = f'BACKEND_URL="{base_external_url}" API_KEY="{user_api_key}" curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash'
-    
-    # Windows용: 스크립트 실행 시 파라미터(-BackendUrl, -ApiKey)로 자동 넘겨주도록 주입
-    win_cmd = f'Invoke-WebRequest -Uri "{base_external_url}/api/logmon/static/install-agent.ps1" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl "{base_external_url}" -ApiKey "{user_api_key}"'
-
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 
     with tab1:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 터미널에 복사하여 붙여넣으세요.**")
-        st.code(mac_cmd, language="bash")
+        
+        # 💡 따옴표가 깨지지 않도록 백슬래시 이스케이프(\")를 적용한 명확한 단일 문자열로 완전 가공하여 주입합니다.
+        mac_cmd_clean = f"BACKEND_URL=\"{base_external_url}\" API_KEY=\"{user_api_key}\" curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash"
+        st.code(mac_cmd_clean, language="bash")
 
     with tab2:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
-        st.code(win_cmd, language="powershell")
+        
+        win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/api/logmon/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
+        st.code(win_cmd_clean, language="powershell")
 
 # 5. 수동 파일 업로드 섹션
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)

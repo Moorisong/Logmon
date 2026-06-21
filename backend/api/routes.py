@@ -54,7 +54,6 @@ async def get_install_script():
             detail="Installation script source file not found"
         )
     
-    # 쉘 템플릿 파일 내부 텍스트 중복 누적 방지 안전장치
     if "#!/usr/bin/env bash" in content:
         parts = content.split("#!/usr/bin/env bash")
         if len(parts) > 2:
@@ -65,25 +64,22 @@ async def get_install_script():
     
     server_url = "https://logmon.haroo.site" 
 
-    # 안전한 특수 격리 태그 치환식 적용
-    content = content.replace('__LOGMON_TARGET_URL__', server_url)
-    content = content.replace('__LOGMON_TARGET_KEY__', primary_key)
+    # [★ 절대적 팩트 매핑] 현재 쉘 스크립트에 적혀있는 리터럴 문자열 그대로를 정확하게 타겟팅하여 치환합니다.
+    content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
+    content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
 
     return Response(content=content, media_type="text/plain")
 
 @router.get("/static/{file_name}")
 async def get_static_file(file_name: str):
     """
-    도커 및 로컬 실행 환경을 모두 고려하여 absolute path 기준 구조로
-    static 디렉터리 내의 파이썬 에이전트 소스들을 안전하게 스트리밍합니다.
+    도커 내부 absolute path 기준 구조로 static 디렉터리 내의 파이썬 에이전트 소스들을 안전하게 스트리밍합니다.
     """
-    # [교정] 파일의 위치를 기준으로 backend/static 절대 경로 연산식 확정
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # api 폴더의 상위인 backend 폴더 진입
+    base_dir = os.path.dirname(current_dir)
     static_dir = os.path.join(base_dir, "static")
     file_path = os.path.join(static_dir, file_name)
     
-    # 실제 파일 존재 여부 실시간 확인 및 가시성 로그 확보
     if not os.path.exists(file_path):
         logger.error(f"🚨 [정적 파일 누락 확인] 지정된 경로에 파일이 존재하지 않습니다: {file_path}")
         raise HTTPException(

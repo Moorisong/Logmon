@@ -88,3 +88,31 @@ def render_dashboard(stats: dict):
     st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
     st.subheader("최근 7일 수집 트렌드")
     render_trend_chart(stats.get("trend_7d", []))
+
+def render_empty_state():
+    """
+    에이전트가 설치되지 않았을 때 표시되는 빈 화면 디자인입니다.
+    """
+    box_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
+    st.markdown(f"""
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; background: rgba(255, 255, 255, 0.6); border: 1px dashed rgba(148, 163, 184, 0.4); border-radius: 24px; margin-top: 30px; margin-bottom: 30px; backdrop-filter: blur(12px); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.03);">
+        <img src="data:image/png;base64,{box_b64}" style="width: 90px; height: 90px; margin-bottom: 25px; filter: grayscale(40%) opacity(80%);">
+        <h2 style="color: #1E293B; font-size: 32px; margin-bottom: 15px; font-weight: 700; letter-spacing: -0.5px;">에이전트가 연결되지 않았어요</h2>
+        <p style="color: #64748B; font-size: 17px; margin-bottom: 40px; text-align: center; max-width: 550px; line-height: 1.6;">
+            LogMon은 로컬 환경의 로그를 실시간으로 수집하고<br>AI를 통해 분석해주는 스마트 모니터링 대시보드입니다.<br><br>
+            지금 에이전트를 설치하고 터미널의 모든 것을 한눈에 파악해 보세요!
+        </p>
+        <a href="/install?mode=install" target="_self" style="text-decoration: none;">
+            <div style="background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%); color: white; padding: 16px 36px; border-radius: 16px; font-size: 18px; font-weight: 700; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: inline-block;">
+                ✨ 에이전트 설치하고 시작하기
+            </div>
+        </a>
+    </div>
+    <style>
+    /* 엠프티 스테이트 버튼 호버 이펙트 */
+    a > div:hover {{
+        transform: translateY(-3px) scale(1.03);
+        box-shadow: 0 12px 30px rgba(59, 130, 246, 0.5);
+    }}
+    </style>
+    """, unsafe_allow_html=True)

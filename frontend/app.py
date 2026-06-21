@@ -6,7 +6,7 @@ load_dotenv()
 import streamlit as st
 from frontend.utils.api_client import fetch_stats, BACKEND_URL
 from frontend.utils.image_helper import get_base64_image
-from frontend.components.dashboard import render_dashboard
+from frontend.components.dashboard import render_dashboard, render_empty_state
 from frontend.components.chat import render_chat_interface
 
 is_local = "localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL or os.getenv("LOGMON_ENV", "local") == "local"
@@ -35,6 +35,13 @@ else:
 def live_dashboard_fragment():
     stats = fetch_stats()
     is_agent_installed = stats.get("is_agent_installed", False)
+
+    # 에이전트 설치 상태 변경 감지하여 전체 화면(챗봇 등) 새로고침
+    prev_installed = st.session_state.get("is_agent_installed", None)
+    if prev_installed is not None and prev_installed != is_agent_installed:
+        st.session_state["is_agent_installed"] = is_agent_installed
+        st.rerun()
+    st.session_state["is_agent_installed"] = is_agent_installed
 
     # 3. 헤더 및 에이전트 설치 버튼 통합 렌더링 (동기화 영역과의 겹침 및 간섭 해결)
     col_logo_title, col_install_btn = st.columns([0.8, 0.2])
@@ -147,13 +154,16 @@ def live_dashboard_fragment():
         """, unsafe_allow_html=True)
 
     # 메인 대시보드 렌더링 (카드, 게이지바, 트렌드 차트)
-    render_dashboard(stats)
+    if is_agent_installed:
+        render_dashboard(stats)
+    else:
+        render_empty_state()
 
 # 라이브 대시보드 프래그먼트 호출
 live_dashboard_fragment()
 
-st.divider()
-
-# RAG 챗 인터페이스 렌더링
-is_err = st.session_state.get("is_error_state", False)
-render_chat_interface(is_err, is_local)
+# 에이전트가 설치된 경우에만 RAG 챗 인터페이스 렌더링
+if st.session_state.get("is_agent_installed", False):
+    st.divider()
+    is_err = st.session_state.get("is_error_state", False)
+    render_chat_interface(is_err, is_local)

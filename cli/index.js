@@ -17,6 +17,17 @@ console.log('===============================================');
 try {
   const installCmd = `export BACKEND_URL="${backendUrl}" && export API_KEY="${apiKey}" && export CLI_VERSION="${pkg.version}" && curl -sL ${backendUrl}/static/install-agent.sh | bash`;
   execSync(installCmd, { stdio: 'inherit' });
+  
+  // 설치 성공 시 CLI 단에서 최종 출력 직접 수행 (동적 버전 주입 보장)
+  console.log('\n🎉 Logmon 로컬 수집기 설치가 완료되었습니다!');
+  console.log(`   제거 명령어: curl -sL ${backendUrl}/static/uninstall-agent.sh | bash\n`);
+  console.log('      /\\_/\\   ');
+  console.log('    （｡･ω･｡)つ━☆・*。');
+  console.log('    ⊂　   |  　　・゜+.  🐾 LogMon Agent is Watching You!');
+  console.log('    　しーＪ　　　°。+ *´`');
+  console.log('===============================================');
+  console.log(`  [ System Build: v${pkg.version} / Made by ksh💗 ]`);
+  console.log('===============================================');
 } catch (error) {
   console.error('\n❌ 에이전트 설치 진행 중 실패:', error.message);
   process.exit(1);

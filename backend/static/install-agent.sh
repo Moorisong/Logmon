@@ -110,16 +110,5 @@ else
     exit 1
 fi
 
-# 7. 설치 완료 로그 및 이스터 에그
-echo ""
-echo "🎉 Logmon 로컬 수집기 설치가 완료되었습니다!"
-echo "   제거 명령어: curl -sL $BACKEND_URL/static/uninstall-agent.sh | bash"
-echo ""
-echo "      /\_/\   "
-echo "    （｡･ω･｡)つ━☆・*。"
-echo "    ⊂　   |  　　・゜+.  🐾 LogMon Agent is Watching You!"
-echo "    　しーＪ　　　°。+ *´\`"
-echo "==============================================="
-echo "  [ System Build: $CLI_VER / Made by ksh💗 ]"
-echo "==============================================="
-echo ""
+# 7. 설치 완료 (출력 및 이스터에그는 호출부 CLI로 위임)
+exit 0

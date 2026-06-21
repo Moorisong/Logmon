@@ -7,7 +7,7 @@ def render_trend_chart(trend_data: List[Dict[str, Any]]):
     백엔드에서 넘겨받은 최근 7일 트렌드 배열을 파스텔 톤 차트로 렌더링합니다.
     """
     if not trend_data:
-        st.info("시각화할 데이터가 충분하지 않습니다.")
+        st.markdown("<p style='color: #64748B; font-style: italic; font-size: 14px;'>시각화할 데이터가 충분하지 않습니다.</p>", unsafe_allow_html=True)
         return
 
     dates = [item["date"][-5:] for item in trend_data]  # MM-DD 형식 축약

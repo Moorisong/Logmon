@@ -174,6 +174,11 @@ footer { visibility: hidden; }
 [data-testid="stChatInput"] {
     scroll-margin-bottom: 100vh !important;
     scroll-margin-top: 100vh !important;
+}/* 6. 백엔드 에러 발생 시 UI 비활성화 스타일 */
+.disabled-area {
+    opacity: 0.45;
+    filter: grayscale(80%) blur(0.8px);
+    pointer-events: none; /* 클릭 및 입력 불가 */
+    user-select: none;
+    transition: all 0.3s ease;
 }
-
-

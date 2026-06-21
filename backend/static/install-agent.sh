@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
-echo "==============================================="
-echo "  👾 LogMon Agent 설치 마법사 (v1.0.0)"
-echo "==============================================="
-
 # 1. 환경 변수 검증 및 기본값 할당
+CLI_VER="${CLI_VERSION:-v1.0.0}"
+if [[ ! "$CLI_VER" =~ ^v ]]; then
+    CLI_VER="v$CLI_VER"
+fi
+
 if [ -z "$BACKEND_URL" ]; then
     BACKEND_URL="https://logmon.haroo.site"
     echo "  > 서버 주소: $BACKEND_URL (기본값 설정)"
@@ -119,6 +120,6 @@ echo "    （｡･ω･｡)つ━☆・*。"
 echo "    ⊂　   |  　　・゜+.  🐾 LogMon Agent is Watching You!"
 echo "    　しーＪ　　　°。+ *´\`"
 echo "==============================================="
-echo "  [ System Build: v1.0.0 / Made by ksh💗 ]"
+echo "  [ System Build: $CLI_VER / Made by ksh💗 ]"
 echo "==============================================="
 echo ""

@@ -134,3 +134,63 @@ def test_get_dashboard_stats_agent_installed_flag():
     insert_activity_log(agent_data)
     stats_agent = get_dashboard_stats(user_key)
     assert stats_agent["is_agent_installed"] is True 
+
+def test_agent_lifecycle_dashboard_sync():
+    """에이전트 설치 및 삭제 라이프사이클에 따라 대시보드 동기화 상태 및 수치가 즉시 차단되거나 제공되는지 세부 검증"""
+    from backend.db.sqlite_handler import get_dashboard_stats
+    
+    user_key = "USER_LIFECYCLE_TEST"
+    
+    # 1. 초기 상태 검증 (설치되지 않음)
+    stats = get_dashboard_stats(user_key)
+    assert stats["is_agent_installed"] is False
+    assert stats["total_logs"] == 0
+    assert stats["last_sync_time"] is None
+    
+    # 2. 에이전트 설치 로그 발생 (AGENT_INSTALL)
+    install_data = {
+        "user_key": user_key,
+        "timestamp": "2026-06-20 12:00:00",
+        "source_tool": "Agent CLI",
+        "event_type": "AGENT_INSTALL",
+        "raw_message": "Agent installed successfully"
+    }
+    insert_activity_log(install_data)
+    
+    stats = get_dashboard_stats(user_key)
+    assert stats["is_agent_installed"] is True
+    assert stats["total_logs"] == 1
+    assert stats["last_sync_time"] == "2026-06-20 12:00:00"
+    
+    # 3. 에이전트 추가 수집 로그 발생
+    edit_data = {
+        "user_key": user_key,
+        "timestamp": "2026-06-20 12:05:00",
+        "source_tool": "Cursor",
+        "event_type": "EDIT",
+        "raw_message": "User edited dashboard.py"
+    }
+    insert_activity_log(edit_data)
+    
+    stats = get_dashboard_stats(user_key)
+    assert stats["is_agent_installed"] is True
+    assert stats["total_logs"] == 2
+    assert stats["last_sync_time"] == "2026-06-20 12:05:00"
+    
+    # 4. 에이전트 삭제 로그 발생 (AGENT_UNINSTALL)
+    uninstall_data = {
+        "user_key": user_key,
+        "timestamp": "2026-06-20 12:10:00",
+        "source_tool": "Agent CLI",
+        "event_type": "AGENT_UNINSTALL",
+        "raw_message": "Agent uninstalled successfully"
+    }
+    insert_activity_log(uninstall_data)
+    
+    stats = get_dashboard_stats(user_key)
+    # 삭제 후에는 즉시 설치 상태가 False가 되어야 하며, 모든 수치가 0 및 None으로 잠겨야 함
+    assert stats["is_agent_installed"] is False
+    assert stats["total_logs"] == 0
+    assert stats["last_sync_time"] is None
+    assert stats["uptime_days"] == 0
+    assert stats["total_lines"] == 0

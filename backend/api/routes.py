@@ -64,10 +64,29 @@ async def get_install_script():
     
     server_url = "https://logmon.haroo.site" 
 
-    # [★ 절대적 팩트 매핑] 현재 쉘 스크립트에 적혀있는 리터럴 문자열 그대로를 정확하게 타겟팅하여 치환합니다.
     content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
     content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
 
+    return Response(content=content, media_type="text/plain")
+
+@router.get("/agent-uninstall-script", status_code=status.HTTP_200_OK)
+async def get_uninstall_script():
+    """
+    Nginx 라우팅 프록시 간섭 없이 언인스톨 스크립트를 안정적으로 반환하는 라우터 엔드포인트입니다.
+    """
+    script_path = "backend/static/uninstall-agent.sh"
+    if not os.path.exists(script_path):
+        script_path = os.path.join(os.path.dirname(__file__), "..", "static", "uninstall-agent.sh")
+
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"제거 스크립트 파일을 읽을 수 없습니다: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Uninstall script source file not found"
+        )
     return Response(content=content, media_type="text/plain")
 
 @router.get("/static/{file_name}")

@@ -10,7 +10,7 @@ const pkg = require('./package.json');
 const http = require('http');
 
 // 전체 인자 중 'uninstall'이 포함되어 있는지 견고하게 확인
-const isUninstall = process.argv.includes('uninstall');
+const isUninstall = process.argv.some(arg => arg.toLowerCase().includes('uninstall'));
 
 function checkBackendHealth(url) {
   return new Promise((resolve) => {

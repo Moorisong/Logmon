@@ -23,7 +23,7 @@ def fetch_stats() -> Dict[str, Any]:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"백엔드 통계 로드 실패: {e}")
+        st.error("통계 데이터를 불러올 수 없습니다. 서버 상태를 확인해주세요.")
         return {
             "total_logs": 0,
             "today_tokens": 0,

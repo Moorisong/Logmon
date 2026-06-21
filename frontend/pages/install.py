@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 import streamlit.components.v1 as components
-from frontend.utils.api_client import BACKEND_URL
+from frontend.utils.api_client import BACKEND_URL, LOGMON_API_KEY
 from frontend.utils.image_helper import get_base64_image
 
 # 1. 페이지 셋업 및 CSS 주입
@@ -21,28 +21,41 @@ data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
 uninstall_b64 = get_base64_image("frontend/assets/icons/icon_uninstall.png")
 
 # 유저 접속 호스트에 맞춰 백엔드 포트(3008) 및 라우팅 주소(/api/logmon)를 완벽하게 동적 빌드
-try:
-    if hasattr(st, "context") and hasattr(st.context, "headers"):
-        current_host = st.context.headers.get("host", "localhost:3007")
+base_external_url = os.getenv("BACKEND_EXTERNAL_URL")
+if not base_external_url:
+    if BACKEND_URL and not any(lh in BACKEND_URL for lh in ["localhost", "127.0.0.1", "backend"]):
+        base_external_url = f"{BACKEND_URL}/api/logmon"
+
+if not base_external_url:
+    try:
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            headers = st.context.headers
+            current_host = headers.get("x-forwarded-host") or headers.get("host", "localhost:3007")
+            protocol = headers.get("x-forwarded-proto") or "http"
+        else:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+            ctx = get_script_run_ctx()
+            current_host = ctx.host if ctx and hasattr(ctx, "host") else "localhost:3007"
+            protocol = "http"
+    except Exception:
+        current_host = "localhost:3007"
+        protocol = "http"
+
+    host_name = current_host.split(":")[0]
+    port = current_host.split(":")[1] if ":" in current_host else ""
+
+    if host_name in ["localhost", "127.0.0.1"]:
+        base_external_url = "http://localhost:3008/api/logmon"
+    elif host_name.startswith("192.168.") or host_name.startswith("10."):
+        base_external_url = f"http://{host_name}:3008/api/logmon"
     else:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-        ctx = get_script_run_ctx()
-        current_host = ctx.host if ctx and hasattr(ctx, "host") else "localhost:3007"
-except Exception:
-    current_host = "localhost:3007"
+        if port == "3007":
+            base_external_url = f"{protocol}://{host_name}:3008/api/logmon"
+        else:
+            base_external_url = f"{protocol}://{current_host}/api/logmon"
 
-host_name = current_host.split(":")[0]
-
-if host_name in ["localhost", "127.0.0.1"]:
-    base_external_url = "http://localhost:3008/api/logmon"
-elif host_name.startswith("192.168.") or host_name.startswith("10."):
-    base_external_url = f"http://{host_name}:3008/api/logmon"
-else:
-    protocol = "https" if st.context.headers.get("x-forwarded-proto") == "https" else "http"
-    base_external_url = f"{protocol}://{host_name}/api/logmon"
-
-# 세션에서 API Key 추출
-user_api_key = st.session_state.get("api_key", "default_dev_key")
+# 세션에서 API Key 추출 (없으면 환경변수 및 기본값으로 설정된 LOGMON_API_KEY 로 fallback)
+user_api_key = st.session_state.get("api_key") or LOGMON_API_KEY
 
 # 2. 뒤로 가기 버튼
 st.markdown('''

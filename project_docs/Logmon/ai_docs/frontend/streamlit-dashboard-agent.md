@@ -56,6 +56,9 @@ frontend/
 * 전체 디자인 시스템에 따라 이모지를 배제하고, `icon_uninstall.png` 또는 `icon_trash.png`를 mix-blend-mode를 입혀 배치한 Glassmorphism 카드로 연출합니다.
 * 쉘 명령어를 표시할 때 보안상 실제 주소와 API Key는 마스킹 처리(`******`)하여 화면에 렌더링합니다.
 * **보안 복사**: `[📋 제거 명령어 복사하기]` 버튼 클릭 시에만 Javascript 또는 Streamlit st.code/clipboard 연동(또는 클릭 시 내부적으로 완성된 주소와 실제 API Key가 적용된 스크립트가 로컬 클립보드에 바인딩되도록 프론트엔드 코드 구성)을 통해 완성된 정상 명령어가 복사되도록 합니다.
+* **API Key 및 URL 동기화 설계**:
+  * **API Key 획득**: 로그인 세션이 보관되지 않는 환경을 방지하기 위해 `st.session_state.get("api_key")`를 1순위로 조회하되, 없을 경우 프론트엔드 내 설정된 `LOGMON_API_KEY` 환경변수 또는 디폴트 설정을 예비(Fallback) 값으로 적용합니다.
+  * **백엔드 외부 URL 감지**: Docker Compose 및 Nginx 리버스 프록시 환경의 라우팅 유연성을 확보하기 위해 `BACKEND_EXTERNAL_URL` 환경변수를 1순위로 사용합니다. 해당 설정이 존재하지 않는 경우 Nginx 등 프록시가 전달한 `X-Forwarded-Host` 및 `X-Forwarded-Proto` 헤더를 결합하여 외부 도메인을 정확히 추출하고, 로컬/내부망 감지 조건에 부합할 경우 기존의 로컬 호스트 및 3008 백엔드 포트 포맷터를 적용합니다.
 
 
 

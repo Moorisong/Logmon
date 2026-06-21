@@ -2,6 +2,8 @@ import os
 import streamlit as st
 from frontend.utils.api_client import BACKEND_URL
 from frontend.utils.image_helper import get_base64_image
+# [★변경] 구버전 Streamlit 하위 호환을 위한 웹소켓 헤더 추출 치트키 임포트
+from streamlit.web.server.websocket_headers import _get_websocket_headers
 
 # 1. 페이지 셋업 및 CSS 주입
 st.set_page_config(page_title="Install LogMon Agent", layout="wide", initial_sidebar_state="collapsed")
@@ -18,8 +20,9 @@ load_css()
 logo_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
 data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
 
-# [★동적 주소 가공] 유저가 브라우저에 치고 들어온 외부 주소(IP 혹은 도메인)를 기반으로 백엔드 외부 주소를 추출합니다.
-current_host = st.context.headers.get("host", BACKEND_URL)
+# [★수정] 안전한 방식으로 유저가 브라우저에 치고 들어온 외부 주소(IP 혹은 도메인)를 추출합니다.
+headers = _get_websocket_headers()
+current_host = headers.get("host", BACKEND_URL) if headers else BACKEND_URL
 
 if ":" in current_host:
     # 예: 125.190.25.48:3007 -> 프론트엔드가 3007이면 백엔드는 외부 포트 3008로 연결되도록 매핑
@@ -115,7 +118,7 @@ with st.container(border=True):
         # 화면상에서는 마스킹 처리된 주소 제공
         st.code("curl -sL ****** | bash", language="bash")
         
-        # [★변경] 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
+        # 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
         real_mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/uninstall-agent.sh | bash"
         
         import streamlit.components.v1 as components
@@ -159,7 +162,7 @@ with st.container(border=True):
         # 화면상에서는 마스킹 처리된 주소 제공
         st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
         
-        # [★변경] 윈도우 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
+        # 윈도우 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
         real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
         
         win_html_template = """

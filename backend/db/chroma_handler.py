@@ -161,10 +161,18 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
             logger.error(f"Chroma DB 컬렉션 add 실패: {e}")
             raise
 
-def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event_type: str = "") -> List[List[str]]:
+def query_vectors(
+    query_text: str,
+    n_results: int = 3,
+    user_key: str = "",
+    event_type: str = "",
+    start_time: str = None,
+    end_time: str = None,
+    keywords: List[str] = None
+) -> List[List[str]]:
     """
     사용자의 질문 텍스트를 임베딩하여 Chroma DB에서 유사도가 높은 문서(청크)를 조회합니다.
-    user_key 메타데이터 필터를 통해 타인의 데이터 조회를 원천 차단합니다.
+    시간 범위(start_time, end_time) 및 특정 키워드(keywords) 필터 조건을 안전하게 후처리 적용합니다.
     """
     if not query_text:
         return []
@@ -176,12 +184,6 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
             
         collection = get_collection()
         
-        # Determine if we should filter by today
-        is_today = False
-        q_lower = query_text.lower()
-        if any(w in q_lower for w in ["오늘", "today", "투데이"]):
-            is_today = True
-
         filters = []
         if user_key:
             filters.append({"user_key": user_key})
@@ -194,8 +196,14 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
         elif len(filters) > 1:
             where_filter = {"$and": filters}
             
-        # If filtering by today, query more candidate results to filter in python
-        query_n = n_results * 5 if is_today else n_results
+        # 시간, 키워드 등의 필터링이 필요한 경우 충분한 모수를 가져와 후처리
+        q_lower = query_text.lower()
+        has_extra_filters = bool(
+            start_time or end_time or keywords or 
+            any(w in q_lower for w in ["오늘", "today", "투데이", "어제", "새벽", "일주일", "분"])
+        )
+        query_n = 100 if has_extra_filters else n_results
+        
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=query_n,
@@ -206,22 +214,37 @@ def query_vectors(query_text: str, n_results: int = 3, user_key: str = "", event
         docs = results.get("documents", [])[0] if results.get("documents") else []
         metas = results.get("metadatas", [])[0] if results.get("metadatas") else []
         
-        if is_today:
-            import datetime
-            timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
-            kst_now = datetime.datetime.now(timezone_kst)
-            today_date_str = kst_now.strftime("%Y-%m-%d")
+        filtered_docs = []
+        for doc, meta in zip(docs, metas):
+            ts = meta.get("timestamp", "")
             
-            filtered_docs = []
-            for doc, meta in zip(docs, metas):
-                ts = meta.get("timestamp", "")
-                if ts and ts.startswith(today_date_str):
-                    filtered_docs.append(doc)
-                    if len(filtered_docs) >= n_results:
-                        break
-            return [filtered_docs]
-        else:
-            return [docs]
+            # 1. 시간 범위 필터 적용
+            if start_time and ts < start_time:
+                continue
+            if end_time and ts > end_time:
+                continue
+                
+            # 2. 오늘 날짜 예외 보완 필터 (오늘/투데이/today 있고 구체적 시각 범위가 없을 때)
+            if not start_time and not end_time:
+                if any(w in q_lower for w in ["오늘", "today", "투데이"]):
+                    import datetime
+                    timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+                    kst_now = datetime.datetime.now(timezone_kst)
+                    today_date_str = kst_now.strftime("%Y-%m-%d")
+                    if not ts or not ts.startswith(today_date_str):
+                        continue
+            
+            # 3. 키워드 필터 적용
+            if keywords:
+                doc_lower = doc.lower()
+                if not any(kw.lower() in doc_lower for kw in keywords):
+                    continue
+                    
+            filtered_docs.append(doc)
+            if len(filtered_docs) >= n_results:
+                break
+                
+        return [filtered_docs]
     except Exception as e:
         logger.error(f"query_vectors 조회 중 에러 발생: {e}")
         return []

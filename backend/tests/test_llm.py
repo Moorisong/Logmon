@@ -77,7 +77,16 @@ async def test_ask_rag_agent_with_context(mock_generate, mock_query):
     answer = await ask_rag_agent("도커 에러 어떻게 풀었지?", "test_user_key")
     
     assert answer == "RAG 처리된 AI 응답"
-    mock_query.assert_called_once_with(query_text="도커 에러 어떻게 풀었지?", n_results=10, user_key="test_user_key", event_type="ERROR")
+    mock_query.assert_called_once_with(
+        query_text="도커 에러 어떻게 풀었지?",
+        n_results=10,
+        user_key="test_user_key",
+        event_type="ERROR",
+        start_time=None,
+        end_time=None,
+        keywords=[]
+    )
+
     
     # 생성된 프롬프트 검증
     prompt_sent = mock_generate.call_args[0][0]

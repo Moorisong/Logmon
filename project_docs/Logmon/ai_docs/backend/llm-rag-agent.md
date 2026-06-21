@@ -39,23 +39,43 @@ backend/
 4. **[개선] 메타데이터 프리필터링 고도화**:
    - **이벤트 타입 분류**: 로그 덤프(`LOG_DUMP`) 적재 시, 각 청크의 본문 텍스트 내 키워드를 분석하여 `[error]` 등의 키워드가 있으면 `event_type` 메타데이터를 `ERROR` 또는 `WARNING`으로 분류하여 저장합니다.
    - **날짜 필터링**: 사용자 질문에 '오늘', 'today', '투데이' 등의 오늘 날짜 관련 검색 의도가 발견되면, KST 로컬 타임존 기준으로 오늘 00:00:00 이후에 등록된 로그만 검색할 수 있도록 `timestamp` 메타데이터 조건(`$gte`)을 필터링 쿼리에 복합(`$and`)으로 결합하여 쿼리합니다.
+   - **[추가] 쿼리 파서(Query Parser) 및 후처리 필터링**: 질문 텍스트에서 시간대 범위('5분', '30분', '오전 10시', '새벽', '어제', '일주일'), 로그 레벨('Error', 'Warning', 'Critical'), 그리고 기술 키워드('Git', 'Connection', 'DB', 'Build' 등)를 정교하게 추출하여 `query_vectors` API의 후처리(Post-filtering) 필터링에 결합해 RAG 컨텍스트 무결성을 확보합니다.
+
 
 #### 3단계: 프롬프트 주입 및 답변 생성
 * 추출된 청크 컨텍스트와 사용자의 원본 질문을 결합하여 프롬프트를 구성합니다.
-* N95 CPU 자원 보호를 위해 프롬프트 템플릿에 들어갈 Context 길이를 최대 2,000 토큰 이하로 강제 통제합니다.
+* N95 CPU 자원 보호를 위해 프롬프트 템플릿에 들어갈 Context 길이를 최대 2,000 토큰 이하로 강제 통제하며, N95 로컬 환경의 체감 속도 향상을 위해 출력 토큰을 최소화하는 숏폼 규칙을 적용합니다.
 
 ```python
-RAG_PROMPT_TEMPLATE = """당신은 개발자의 작업 로그와 과거 해결 내역을 분석하는 AI 어시스턴트 '로그몬'입니다.
-제시된 과거 로그 컨텍스트를 바탕으로 사용자의 질문에 친절하고 명확하게 답변해 주세요.
-만약 과거 로그 컨텍스트에서 답변을 찾을 수 없다면 억지로 꾸며내지 말고 솔직하게 모른다고 대답하세요.
+RAG_PROMPT_TEMPLATE = """[Identity]
+Role: Machine Log Summarizer.
+Restrictions: STRICTLY NO greetings, NO explanations, NO polite endings (e.g., '~입니다', '~보입니다', '~하십시오'), NO conversation. Output ONLY the defined Markdown formats using Key-Value or Bullet structure.
+Ending: All sentences must end in a noun or noun phrase (명사형 종결).
 
-[과거 로그 컨텍스트]
+[Task]
+Identify the User Query Intent and output EXACTLY in the corresponding format below based ONLY on the [Context] provided. If context is empty or has no logs, output "최근 기록된 작업 로그가 존재하지 않습니다." and stop immediately.
+
+[Formats]
+1. Intent 1: Count / List request (e.g., "how many?", "list logs", "로그 몇개야?")
+### 📊 분석 결과
+- 통계: 에러 총 [X]개 발생
+- 내역:
+  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
+
+2. Intent 2: Cause / Troubleshooting / Type analysis (e.g., "what is the cause?", "how to fix?")
+### 🔍 에러 원인 분석
+- 내역:
+  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
+- 유형: [카테고리] ([핵심 장애 원인 요약 1문장])
+- 조치: [해결을 위해 필요한 액션 1문장]
+
+[Context]
 {context}
 
-[사용자 질문]
+[User Query]
 {question}
 
-[답변] (한국어로 친절하고 정확하게 기술):"""
+[Answer] (Output only matching Intent Markdown format):"""
 ```
 
 ---

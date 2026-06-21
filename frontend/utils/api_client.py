@@ -11,7 +11,7 @@ LOGMON_API_KEY = os.getenv("LOGMON_API_KEY", "default_dev_key")
 def get_headers() -> Dict[str, str]:
     return {"X-LogMon-API-Key": LOGMON_API_KEY}
 
-@st.cache_data(ttl=60)
+
 def fetch_stats() -> Dict[str, Any]:
     """
     백엔드에서 통계 데이터를 긁어옵니다. 

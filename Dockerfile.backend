@@ -11,8 +11,12 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 소스코드 전체 복사
+# 1) 백엔드 소스코드 전체 복사
 COPY backend/ /app/backend/
+
+# 2) [★핵심 추가] 프로젝트 최상단의 agent 소스 코드를 백엔드의 static 폴더 내부로 복사
+#    이 설정을 통해 유저가 curl 요청 시 언제나 최신 에이전트 코드를 다운로드할 수 있습니다.
+COPY agent/agent_main.py /app/backend/static/agent_main.py
 
 # 포트 개방
 EXPOSE 8000

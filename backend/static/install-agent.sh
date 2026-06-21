@@ -6,31 +6,28 @@ echo "  👾 Logmon Agent 설치 마법사 (macOS/Linux)  "
 echo "==============================================="
 echo ""
 
-# [★교정] BACKEND_URL이 비어있을 때만 정확히 입력을 받습니다.
-if [ -z "$BACKEND_URL" ]; then
-    read -p "백엔드 서버 주소를 입력하세요 (예: https://logmon.haroo.site): " BACKEND_URL < /dev/tty
-fi
-
+# 1. 환경 변수 검증 및 기본값 할당
 if [ -z "$BACKEND_URL" ]; then
     BACKEND_URL="https://logmon.haroo.site"
-    echo "  > 입력이 없어 기본값($BACKEND_URL)으로 설정합니다."
+    echo "  > 주소가 지정되지 않아 기본값($BACKEND_URL)으로 자동 설정합니다."
 else
     echo "  > 연결할 백엔드 서버 주소: $BACKEND_URL"
 fi
 
-# [★진짜 최종 교정] API_KEY도 환경변수 주입이 되었다면 read 창을 완전히 건너뜁니다!
 if [ -z "$API_KEY" ]; then
-    read -p "발급받은 보안 API Key를 입력하세요: " API_KEY < /dev/tty
-fi
-
-if [ -z "$API_KEY" ]; then
-    echo "  > [경고] API Key가 비어있습니다. 백엔드 전송이 거부될 수 있습니다."
+    API_KEY="default_dev_key"
+    echo "  > [경고] API Key가 제공되지 않아 기본 개발용 키($API_KEY)로 대체합니다."
 else
     echo "  > 보안 인증 API Key 매핑 완료! ✓"
 fi
 
-# 2. 설정 파일 생성
-CONFIG_FILE="$HOME/.logmon_config.json"
+# 2. 유저 홈 디렉터리에 독립 실행 환경 생성
+AGENT_DIR="$HOME/.logmon_agent"
+mkdir -p "$AGENT_DIR"
+echo "✅ 에이전트 실행 디렉터리 준비 완료: $AGENT_DIR"
+
+# 3. 설정 파일 생성 (격리 폴더 내부에 저장)
+CONFIG_FILE="$AGENT_DIR/logmon_config.json"
 cat > "$CONFIG_FILE" <<EOF
 {
   "backend_url": "$BACKEND_URL",
@@ -39,29 +36,35 @@ cat > "$CONFIG_FILE" <<EOF
 EOF
 echo "✅ 설정 파일이 저장되었습니다: $CONFIG_FILE"
 
-# 3. MVP용 바이너리 경로 우회 셋업
+# 4. 백엔드 서버로부터 최신 agent_main.py 코드를 다운로드 (핵심 우회 로직)
+AGENT_SCRIPT_PATH="$AGENT_DIR/agent_main.py"
+echo "🔄 백엔드 서버로부터 최신 에이전트 스크립트를 다운로드하는 중..."
+
+# FastAPI 스태틱 경로 규칙에 맞게 소스 코드 다운로드 요청
+curl -sL "$BACKEND_URL/static/agent_main.py" -o "$AGENT_SCRIPT_PATH"
+
+# 정상적으로 다운로드 되었는지 검증 (404 Not Found 문자열 필터링)
+if [ ! -f "$AGENT_SCRIPT_PATH" ] || grep -q "Not Found" "$AGENT_SCRIPT_PATH"; then
+    echo "❌ 에이전트 스크립트 다운로드에 실패했습니다."
+    echo "   백엔드 스태틱 폴더에 'agent_main.py' 파일이 복사되어 있는지 확인해 주세요."
+    exit 1
+fi
+echo "✅ 최신 에이전트 코드 동기화 완료! ✓"
+
+# 5. 파이썬 바이너리 체크 및 실행 스펙 정의
 PYTHON_BIN=$(command -v python3 || command -v python)
-CURRENT_DIR=$(pwd)
-AGENT_SCRIPT_PATH="$CURRENT_DIR/agent/agent_main.py"
 EXEC_CMD="$PYTHON_BIN"
 EXEC_ARG1="$AGENT_SCRIPT_PATH"
 
-if [ ! -f "$AGENT_SCRIPT_PATH" ]; then
-    echo "❌ 현재 위치에서 agent/agent_main.py를 찾을 수 없습니다."
-    echo "   Logmon 프로젝트 최상단 디렉터리에서 스크립트를 실행해 주세요."
-    exit 1
-fi
-
 echo "✅ 에이전트 실행 환경 매핑 완료: $EXEC_CMD $EXEC_ARG1"
 
-# 4. OS 판별 및 스케줄러 등록
+# 6. OS 판별 및 스케줄러 등록
 OS_NAME=$(uname -s)
 
 if [ "$OS_NAME" = "Darwin" ]; then
     # macOS - launchd 등록
     PLIST_PATH="$HOME/Library/LaunchAgents/com.logmon.agent.plist"
     
-    # 멱등성: 기존 스케줄러 존재 시 하차(Unload)
     if launchctl list | grep -q "com.logmon.agent"; then
         echo "🔄 기존 데몬을 중지하고 업데이트합니다..."
         launchctl unload "$PLIST_PATH" 2>/dev/null || true
@@ -84,7 +87,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
-        <string>$CURRENT_DIR</string>
+        <string>$AGENT_DIR</string>
     </dict>
     <key>StartInterval</key>
     <integer>300</integer>
@@ -101,7 +104,7 @@ elif [ "$OS_NAME" = "Linux" ]; then
     # Linux - crontab 등록
     CRON_TEMP=$(mktemp)
     crontab -l | grep -v "agent_main.py" > "$CRON_TEMP" || true
-    echo "*/5 * * * * cd $CURRENT_DIR && export PYTHONPATH=$CURRENT_DIR && $EXEC_CMD $EXEC_ARG1 >> $HOME/.logmon_cron.log 2>&1" >> "$CRON_TEMP"
+    echo "*/5 * * * * cd $AGENT_DIR && export PYTHONPATH=$AGENT_DIR && $EXEC_CMD $EXEC_ARG1 >> $HOME/.logmon_cron.log 2>&1" >> "$CRON_TEMP"
     crontab "$CRON_TEMP"
     rm "$CRON_TEMP"
     echo "🐧 Linux Crontab 등록 완료. (5분 주기 실행)"
@@ -111,12 +114,12 @@ else
     exit 1
 fi
 
-# 5. [★귀염뽀짝 이스터 에그] 설치 완료 로그 및 Made by ksh 마크 주입
+# 7. 설치 완료 로그 및 이스터 에그
 echo ""
 echo "Logmon 로컬 수집기 설치가 완료되었습니다!"
 echo "   백그라운드에서 매 5분마다 IDE 로그를 체크하여 서버로 전송합니다."
 echo "   제거를 원하시면 아래 명령어를 실행하세요:"
-echo "   curl -sL $BACKEND_URL/api/logmon/static/uninstall-agent.sh | bash"
+echo "   curl -sL $BACKEND_URL/static/uninstall-agent.sh | bash"
 echo ""
 echo "==============================================="
 echo "       /\_/\   "

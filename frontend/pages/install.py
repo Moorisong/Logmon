@@ -17,29 +17,34 @@ load_css()
 # 이미지 에셋 로드 (Base64)
 logo_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
 data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
+uninstall_b64 = get_base64_image("frontend/assets/icons/icon_uninstall.png")
 
-# [★파이썬 기반 동적 주소 추출] 버전을 전혀 타지 않는 안전한 파이썬 방식으로 호스트 추출
-current_host = BACKEND_URL  # 기본값 세팅
+# [★플로우 핵심] 유저가 브라우저 주소창에 친 주소 그대로 베이스 도메인을 추출합니다.
 try:
     if hasattr(st, "context") and hasattr(st.context, "headers"):
-        current_host = st.context.headers.get("host", BACKEND_URL)
+        current_host = st.context.headers.get("host", "localhost:3007")
     else:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
         ctx = get_script_run_ctx()
-        if ctx:
-            current_host = BACKEND_URL
+        current_host = ctx.host if ctx and hasattr(ctx, "host") else "localhost:3007"
 except Exception:
-    current_host = BACKEND_URL
+    current_host = "localhost:3007"
 
-# 유저 접속 주소에 맞게 외부 백엔드 포트(3008) 매핑
-if "localhost" in current_host or "127.0.0.1" in current_host:
-    base_external_url = "http://localhost:3008"
-elif ":" in current_host:
-    base_external_url = f"http://{current_host.split(':')[0]}:3008"
+# [★플로우 핵심] 유저 접속 호스트에 맞춰 백엔드 포트(3008) 및 라우팅 주소(/api/logmon)를 완벽하게 동적 빌드
+host_name = current_host.split(":")[0]
+
+if host_name in ["localhost", "127.0.0.1"]:
+    # 1) SSH 터널링으로 로컬 포트포워딩 테스트 중인 경우
+    base_external_url = "http://localhost:3008/api/logmon"
+elif host_name.startswith("192.168.") or host_name.startswith("10."):
+    # 2) 집 안에서 공유기 내부 IP로 접속한 경우
+    base_external_url = f"http://{host_name}:3008/api/logmon"
 else:
-    base_external_url = f"http://{current_host}/api"
+    # 3) 외부 도메인이나 클라우드플레어 터널링 주소로 들어온 경우 (Nginx 리버스 프록시 패스 적용)
+    protocol = "https" if st.context.headers.get("x-forwarded-proto") == "https" else "http"
+    base_external_url = f"{protocol}://{host_name}/api/logmon"
 
-# [★추가] 유저 세션에서 현재 로그인된 API Key 추출 (없으면 기본 개발 키 매핑)
+# 세션에서 API Key 추출
 user_api_key = st.session_state.get("api_key", "default_dev_key")
 
 # 2. 뒤로 가기 버튼 (좌측 상단에 배치, 버튼 스타일 적용)
@@ -63,23 +68,22 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 (Streamlit 내부 마크다운 파싱 왜곡 버그 차단 조립)
+# 4. 설치 안내 콘텐츠 상자 (404 Not Found를 방지하도록 스태틱 경로 수정 완료)
 with st.container(border=True):
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 
     with tab1:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        st.markdown("**1. 아래 명령어를 터미널에 복사하여 붙여넣으세요.**")
+        st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
         
-        # 💡 따옴표가 깨지지 않도록 백슬래시 이스케이프(\")를 적용한 명확한 단일 문자열로 완전 가공하여 주입합니다.
-        mac_cmd_clean = f"BACKEND_URL=\"{base_external_url}\" API_KEY=\"{user_api_key}\" curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash"
+        mac_cmd_clean = f"export BACKEND_URL=\"{base_external_url}\" && export API_KEY=\"{user_api_key}\" && curl -sL {base_external_url}/static/install-agent.sh | bash"
         st.code(mac_cmd_clean, language="bash")
 
     with tab2:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
         
-        win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/api/logmon/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
+        win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
         st.code(win_cmd_clean, language="powershell")
 
 # 5. 수동 파일 업로드 섹션
@@ -110,8 +114,6 @@ with st.container(border=True):
 # 6. 에이전트 제거 가이드 섹션
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
 
-uninstall_b64 = get_base64_image("frontend/assets/icons/icon_uninstall.png")
-
 with st.container(border=True):
     st.markdown(f'''
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
@@ -129,7 +131,7 @@ with st.container(border=True):
         st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
         st.code("curl -sL ****** | bash", language="bash")
         
-        real_mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/uninstall-agent.sh | bash"
+        real_mac_cmd = f"curl -sL {base_external_url}/static/uninstall-agent.sh | bash"
         
         import streamlit.components.v1 as components
         mac_html_template = """
@@ -164,7 +166,7 @@ with st.container(border=True):
         st.markdown("**1. 관리자 권한의 PowerShell 창에서 복사 버튼을 클릭하여 실행하십시오.**")
         st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
         
-        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
         
         win_html_template = """
             <button id="copy-win-btn" style="

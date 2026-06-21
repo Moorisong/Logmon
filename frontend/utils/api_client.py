@@ -48,7 +48,7 @@ def send_chat(question: str) -> str:
     except requests.exceptions.Timeout:
         return "현재 AI 엔진 서비스가 일시 정지 중이거나 과부하 상태입니다."
     except requests.exceptions.RequestException as e:
-        return f"서버 통신 실패: {e}"
+        return "서버 통신에 실패했습니다."
 
 def upload_log(file_content: bytes, filename: str) -> bool:
     """

@@ -7,8 +7,36 @@ const os = require('os');
 const readline = require('readline');
 const pkg = require('./package.json');
 
+const http = require('http');
+
 // 전체 인자 중 'uninstall'이 포함되어 있는지 견고하게 확인
 const isUninstall = process.argv.includes('uninstall');
+
+function checkBackendHealth(url) {
+  return new Promise((resolve) => {
+    const matches = url.match(/https?:\/\/([^:/]+)(?::(\d+))?/);
+    if (!matches) {
+      resolve(false);
+      return;
+    }
+    const host = matches[1];
+    const port = matches[2] || 80;
+    const path = '/api/health';
+
+    const req = http.get({ host, port, path, timeout: 500 }, (res) => {
+      resolve(res.statusCode === 200);
+    });
+
+    req.on('error', () => {
+      resolve(false);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
 
 function getSavedConfig() {
   const homeDir = os.homedir();
@@ -72,18 +100,16 @@ async function run() {
     }
     backendUrl = foundUrl || process.env.BACKEND_URL || backendUrl;
 
-    // 만약 기존 설정도 없고, 인자도 주어지지 않았고, 테스트 모드가 아닐 때 대화형 입력 받기
-    if (!savedConfig && !foundUrl && (!firstArg || firstArg === 'uninstall') && process.env.LOGMON_TEST_MODE !== 'true') {
-      console.log('===============================================');
-      console.log('  ⚙️  LogMon CLI 초기 설정');
-      console.log('===============================================');
-      const inputUrl = await askQuestion(`백엔드 서버 주소 [${backendUrl}]: `);
-      if (inputUrl.trim()) {
-        backendUrl = inputUrl.trim();
-      }
-      const inputKey = await askQuestion(`보안 API Key [${apiKey}]: `);
-      if (inputKey.trim()) {
-        apiKey = inputKey.trim();
+    // 자동 감지(Auto-detect) 및 덮어쓰기 로직 (유저 타이핑 완전 제거)
+    if (!foundUrl && !process.env.BACKEND_URL && process.env.LOGMON_TEST_MODE !== 'true') {
+      const is3008Healthy = await checkBackendHealth("http://localhost:3008");
+      if (is3008Healthy) {
+        backendUrl = "http://localhost:3008/api/logmon";
+      } else {
+        const is8000Healthy = await checkBackendHealth("http://localhost:8000");
+        if (is8000Healthy) {
+          backendUrl = "http://localhost:8000/api/logmon";
+        }
       }
     }
   }

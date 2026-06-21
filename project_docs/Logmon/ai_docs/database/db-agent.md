@@ -6,7 +6,7 @@
 
 ## 📝 1. 연동 기획 명세 ([Logmon-database.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/database/Logmon-database.md))
 * **SQLite 3**: `ide_activity_logs` 테이블 구조 및 인덱스 정합성 사수.
-* **Chroma DB**: `bge-small-en-v1.5` 임베딩에 적합한 데이터 분할(Chunking) 및 적재 파이프라인.
+* **Chroma DB**: `nomic-embed-text` 임베딩에 적합한 데이터 분할(Chunking) 및 적재 파이프라인.
 * **청킹 제약**: Chunk Size 800 자, Chunk Overlap 100 자 준수.
 
 ---

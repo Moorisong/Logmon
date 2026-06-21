@@ -11,7 +11,7 @@ def format_sync_time(last_sync_time_str: str) -> str:
         now = datetime.datetime.now()
         diff = int((now - last_dt).total_seconds())
         if diff < 60:
-            return f"{diff}초 전 (정상)"
+            return "방금 전 (동기화 중 🟢)"
         elif diff < 3600:
             return f"{diff // 60}분 전 (정상)"
         elif diff < 86400:

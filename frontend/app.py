@@ -61,18 +61,14 @@ def live_dashboard_fragment():
         if is_agent_installed:
             btn_text = "에이전트 제거하기"
             btn_link = "/install?mode=uninstall"
-        else:
-            btn_text = "에이전트 설치하기"
-            btn_link = "/install?mode=install"
-            
-        st.markdown(
-            f'''<a href="{btn_link}" target="_self" style="text-decoration: none;">
-                <div class="install-btn">
-                    {btn_text}
-                </div>
-            </a>''', 
-            unsafe_allow_html=True
-        )
+            st.markdown(
+                f'''<a href="{btn_link}" target="_self" style="text-decoration: none;">
+                    <div class="install-btn">
+                        {btn_text}
+                    </div>
+                </a>''', 
+                unsafe_allow_html=True
+            )
 
     # 에러 상태 여부 판단 (백엔드가 오프라인이고, 세션에 mock_stats가 없는 경우)
     is_error_state = not stats.get("is_online", True) and "mock_stats" not in st.session_state

@@ -65,7 +65,7 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠 상자 (★NPM 서버 우회형 눈속임 클립보드 기법★)
+# 4. 설치 안내 콘텐츠 상자 (★NPM 공식 등록 패키지 연동★)
 with st.container(border=True):
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 
@@ -73,11 +73,12 @@ with st.container(border=True):
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
         
-        # 유저 화면 상자에는 기가 막히게 깔끔한 명품 패키지 명령어만 노출
+        # 유저 화면 상자에는 명품 오픈소스 감성의 세상 깔끔한 표준 명령어 노출
         visible_npx = "npx logmon-cli"
         
-        # [★최종 치트키] NPM 배포판 대신, 우리 백엔드 static에 올려둔 index.js를 실시간으로 땡겨와 node로 즉시 원격 실행!
-        hidden_npx = f"export BACKEND_URL=\"{base_external_url}\" && export API_KEY=\"{user_api_key}\" && curl -sL {base_external_url}/static/index.js | node"
+        # [★정식 NPM 연동 완료] 유저가 복사 버튼을 누르면 내부적으로 API Key와 백엔드 주소를 주입하고,
+        # NPM 마켓에 방금 등록 성공한 진짜 형님의 공식 패키지(@thiagomiki/logmon-cli)를 원격 호출하여 다이렉트로 가동합니다!
+        hidden_npx = f"BACKEND_URL=\"{base_external_url}\" API_KEY=\"{user_api_key}\" npx @thiagomiki/logmon-cli"
         
         npx_html = f"""
         <div style="background-color: #0F172A; padding: 14px 18px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
@@ -102,4 +103,110 @@ with st.container(border=True):
         win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
         st.code(win_cmd_clean, language="powershell")
 
-# (이하 수동 파일 업로드 및 제거 가이드는 완전히 동일하므로 생략)
+# 5. 수동 파일 업로드 섹션
+st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
+
+with st.container(border=True):
+    st.markdown(f'''
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+            <img src="data:image/png;base64,{data_b64}" class="icon-img" style="width: 28px; height: 28px;">
+            <h3 style="margin: 0; font-size: 20px; font-weight: 700;">수동 파일 업로드</h3>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    st.markdown("에이전트를 설치할 수 없는 환경이라면 직접 로그 파일을 업로드하실 수 있습니다.")
+
+    uploaded_file = st.file_uploader("로그 파일 선택", type=["txt", "log", "json", "md"], help="텍스트 기반 로그 파일을 업로드해주세요.", label_visibility="collapsed")
+
+    if uploaded_file is not None:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        if st.button("업로드 전송", use_container_width=True):
+            from frontend.utils.api_client import upload_log
+            file_bytes = uploaded_file.read()
+            with st.spinner("파일을 분석하고 백엔드로 전송 중입니다..."):
+                success = upload_log(file_bytes, uploaded_file.name)
+            if success:
+                st.success("파일이 성공적으로 업로드 및 처리되었습니다!")
+
+# 6. 에이전트 제거 가이드 섹션
+st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
+
+with st.container(border=True):
+    st.markdown(f'''
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; margin-top: 10px;">
+            <img src="data:image/png;base64,{uninstall_b64}" class="icon-img" style="width: 28px; height: 28px; mix-blend-mode: multiply;">
+            <h3 style="margin: 0; font-size: 20px; font-weight: 700;">에이전트 제거 가이드</h3>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    st.markdown("설치된 에이전트를 시스템에서 완전히 삭제하려면 아래 가이드를 따르십시오.")
+    
+    tab_un_mac, tab_un_win = st.tabs(["macOS / Linux 제거", "Windows 제거"])
+    
+    with tab_un_mac:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("**1. 터미널 실행창에 보이는 마스킹된 주소 대신, 복사 버튼을 클릭하여 실행하십시오.**")
+        st.code("curl -sL ****** | bash", language="bash")
+        
+        real_mac_cmd = f"curl -sL {base_external_url}/static/uninstall-agent.sh | bash"
+        
+        mac_html_template = """
+            <button id="copy-mac-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; border: none; padding: 10px 18px; 
+                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-mac-btn');
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText("REAL_MAC_CMD").then(() => {
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
+                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
+                    }, 2000);
+                });
+            });
+            </script>
+        """
+        components.html(mac_html_template.replace("REAL_MAC_CMD", real_mac_cmd), height=60)
+        
+    with tab_un_win:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("**1. 관리자 권한의 PowerShell 창에서 복사 버튼을 클릭하여 실행하십시오.**")
+        st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
+        
+        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        
+        win_html_template = """
+            <button id="copy-win-btn" style="
+                background: linear-gradient(135deg, #3B82F6, #2563EB); 
+                color: white; border: none; padding: 10px 18px; 
+                border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;
+            ">
+                📋 제거 명령어 복사하기
+            </button>
+            <script>
+            const btn = document.getElementById('copy-win-btn');
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText("REAL_WIN_CMD").then(() => {
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = "제거 명령어 복사 완료! ✓";
+                    btn.style.background = "linear-gradient(135deg, #10B981, #059669)";
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = "linear-gradient(135deg, #3B82F6, #2563EB)";
+                    }, 2000);
+                });
+            });
+            </script>
+        """
+        components.html(win_html_template.replace("REAL_WIN_CMD", real_win_cmd), height=60)

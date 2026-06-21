@@ -1,14 +1,17 @@
 {
   "name": "@thiagomiki/logmon-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "LogMon Agent Auto Installer",
   "main": "index.js",
   "bin": {
-    "logmon-cli": "./index.js"
+    "logmon-cli": "index.js"
   },
   "files": [
     "index.js"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "ksh💗",
   "license": "MIT"
 }

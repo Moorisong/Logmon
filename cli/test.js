@@ -50,3 +50,14 @@ test('CLI 에이전트 제거 출력 포맷 검증', (t) => {
   assert.ok(!output.includes('🐾 LogMon Agent is Watching You!'), '제거 모드에서 고양이 이스터에그가 노출되면 안 됩니다.');
   assert.ok(!output.includes('Made by ksh💗'), '제작자 정보 푸터가 제거 모드에서 노출되면 안 됩니다.');
 });
+
+test('CLI 에이전트 버전 출력 검증', (t) => {
+  const pkg = require('./package.json');
+  const output1 = execSync(`node "${cliPath}" --version`, { encoding: 'utf8' }).trim();
+  const output2 = execSync(`node "${cliPath}" -v`, { encoding: 'utf8' }).trim();
+  const output3 = execSync(`node "${cliPath}" version`, { encoding: 'utf8' }).trim();
+
+  assert.strictEqual(output1, `logmon v${pkg.version}`, '--version 옵션에 버전이 정상 출력되어야 합니다.');
+  assert.strictEqual(output2, `logmon v${pkg.version}`, '-v 옵션에 버전이 정상 출력되어야 합니다.');
+  assert.strictEqual(output3, `logmon v${pkg.version}`, 'version 옵션에 버전이 정상 출력되어야 합니다.');
+});

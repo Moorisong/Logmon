@@ -35,17 +35,19 @@ cat > "$CONFIG_FILE" <<EOF
 }
 EOF
 
-# 4. 백엔드 서버로부터 최신 agent_main.py 코드를 다운로드 (핵심 우회 로직)
+# 4. 백엔드 서버로부터 최신 에이전트 소스 파일들 다운로드
 AGENT_SCRIPT_PATH="$AGENT_DIR/agent_main.py"
+mkdir -p "$AGENT_DIR/core"
 
-# FastAPI 스태틱 경로 규칙에 맞게 소스 코드 다운로드 요청
 curl -sL "$BACKEND_URL/static/agent_main.py" -o "$AGENT_SCRIPT_PATH"
+curl -sL "$BACKEND_URL/static/config.py" -o "$AGENT_DIR/config.py"
+curl -sL "$BACKEND_URL/static/sender.py" -o "$AGENT_DIR/core/sender.py"
+curl -sL "$BACKEND_URL/static/checkpoint.py" -o "$AGENT_DIR/core/checkpoint.py"
 
-# 정상적으로 다운로드 되었는지 검증 (404 Not Found 문자열 필터링)
+# 다운로드 검증
 if [ ! -f "$AGENT_SCRIPT_PATH" ] || grep -q "Not Found" "$AGENT_SCRIPT_PATH"; then
-    echo "❌ 에이전트 스크립트 다운로드에 실패했습니다."
-    echo "   백엔드 스태틱 폴더에 'agent_main.py' 파일이 복사되어 있는지 확인해 주세요."
-    exit 1
+  echo "❌ 에이전트 스크립트 다운로드에 실패했습니다."
+  exit 1
 fi
 echo "✅ 설정 및 최신 에이전트 코드 동기화 완료! ✓"
 
@@ -83,7 +85,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
     <key>EnvironmentVariables</key>
     <dict>
         <key>PYTHONPATH</key>
-        <string>$AGENT_DIR</string>
+        <string>$AGENT_DIR:$AGENT_DIR/..</string>
     </dict>
     <key>StartInterval</key>
     <integer>300</integer>

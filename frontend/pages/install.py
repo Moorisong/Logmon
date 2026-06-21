@@ -89,14 +89,9 @@ with st.container(border=True):
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 전체 복사하여 터미널에 붙여넣고 엔터를 치세요.**")
         
-        # 유저 화면 상자에는 명품 감성의 주소 노출
-        visible_npx = "npx @thiagomiki/logmon-cli@latest"
-        
-        # 백엔드 URL이 기본 로컬 주소인 경우 URL 매개변수 전송을 과감히 생략하여 간결함 극대화
-        if "localhost" in base_external_url or "127.0.0.1" in base_external_url:
-            hidden_npx = f"npx @thiagomiki/logmon-cli@latest {user_api_key}"
-        else:
-            hidden_npx = f"npx @thiagomiki/logmon-cli@latest {user_api_key} {base_external_url}"
+        # 이제 인자 없이 npx logmon-cli 만으로 설치 가능 (부족한 설정은 대화형 입력 처리됨)
+        hidden_npx = "npx logmon-cli"
+        visible_npx = hidden_npx
         
         copy_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
         check_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
@@ -124,13 +119,14 @@ with st.container(border=True):
         </script>
         """
         components.html(npx_html, height=70)
+        st.markdown("<p style='font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 11.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
 
     with tab2:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 명령어를 PowerShell에 복사하여 붙여넣으세요.**")
         
         win_cmd_clean = f"Invoke-WebRequest -Uri \"{base_external_url}/static/install-agent.ps1\" -OutFile install-agent.ps1; .\\install-agent.ps1 -BackendUrl \"{base_external_url}\" -ApiKey \"{user_api_key}\""
-        visible_win = "powershell -Command \"iwr -Uri [LogMon_Server] -OutFile install-agent.ps1...\""
+        visible_win = win_cmd_clean
         
         win_html = f"""
         <style>
@@ -155,6 +151,7 @@ with st.container(border=True):
         </script>
         """
         components.html(win_html, height=70)
+        st.markdown("<p style='font-size: 13.5px; color: #64748B; margin-top: 5px; margin-bottom: 20px; margin-left: 15px;'>에이전트 설치 여부 및 버전은 <code style='font-size: 14.5px;'>npx logmon-cli@latest --version</code> 명령어로 확인하실 수 있습니다.</p>", unsafe_allow_html=True)
 
 # 5. 수동 파일 업로드 섹션
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
@@ -200,8 +197,8 @@ with st.container(border=True):
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.markdown("**1. 아래 제거 명령어를 복사하여 터미널에 실행하십시오.**")
         
-        real_mac_cmd = f"npx @thiagomiki/logmon-cli@latest uninstall {base_external_url}"
-        visible_un_mac = "npx @thiagomiki/logmon-cli@latest uninstall"
+        real_mac_cmd = "npx logmon-cli uninstall"
+        visible_un_mac = real_mac_cmd
         
         un_mac_html = f"""
         <style>
@@ -232,7 +229,7 @@ with st.container(border=True):
         st.markdown("**1. 관리자 권한의 PowerShell 창에서 아래 명령어를 실행하십시오.**")
         
         real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
-        visible_un_win = "powershell -Command \"iwr -Uri [LogMon_Server]/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1...\""
+        visible_un_win = real_win_cmd
         
         un_win_html = f"""
         <style>

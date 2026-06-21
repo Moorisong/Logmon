@@ -6,7 +6,27 @@ from unittest.mock import patch, mock_open, MagicMock
 import urllib.error
 from agent.core.checkpoint import get_last_offset, update_offset, CHECKPOINT_FILE
 from agent.core.sender import scan_and_send
-from agent.config import get_cursor_logs_dir
+from agent.config import get_ide_logs_dirs
+
+# 2. OS 경로 파싱 단위 테스트
+@patch('os.path.exists')
+@patch('platform.system')
+def test_os_routing(mock_system, mock_exists):
+    mock_exists.return_value = True
+    
+    # macOS 모킹
+    mock_system.return_value = "Darwin"
+    dirs_mac = get_ide_logs_dirs()
+    assert any("Library/Application Support/Cursor/logs" in d for d in dirs_mac)
+    assert any("Library/Application Support/Antigravity/logs" in d for d in dirs_mac)
+    
+    # Windows 모킹
+    mock_system.return_value = "Windows"
+    with patch.dict('os.environ', {'APPDATA': 'C:\\Users\\dummy\\AppData\\Roaming'}):
+        dirs_win = get_ide_logs_dirs()
+        assert any("Cursor/logs" in d.replace('\\', '/') for d in dirs_win)
+        assert any("Antigravity/logs" in d.replace('\\', '/') for d in dirs_win)
+
 
 @pytest.fixture(autouse=True)
 def setup_teardown_checkpoint():
@@ -34,16 +54,7 @@ def test_offset_logic():
     # 1-3. 다른 파일 영향 없음 확인
     assert get_last_offset("/tmp/other.log") == 0
 
-# 2. OS 경로 파싱 단위 테스트
-@patch('platform.system')
-def test_os_routing(mock_system):
-    # macOS 모킹
-    mock_system.return_value = "Darwin"
-    assert "Library/Application Support/Cursor/logs" in get_cursor_logs_dir()
-    
-    # Windows 모킹
-    mock_system.return_value = "Windows"
-    assert "Cursor\\logs" in get_cursor_logs_dir() or "Cursor/logs" in get_cursor_logs_dir()
+
 
 # 3. urllib HTTP 통신 방어 및 실패 롤백 테스트
 @patch('agent.core.sender.update_offset')

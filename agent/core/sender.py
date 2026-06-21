@@ -4,7 +4,13 @@ import urllib.request
 import urllib.error
 import logging
 
-from agent.core.checkpoint import get_last_offset, update_offset
+try:
+  from agent.core.checkpoint import get_last_offset, update_offset
+except ModuleNotFoundError:
+  try:
+    from core.checkpoint import get_last_offset, update_offset
+  except ModuleNotFoundError:
+    from checkpoint import get_last_offset, update_offset
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +67,11 @@ def scan_and_send(filepath: str, backend_url: str, api_key: str):
         "raw_message": raw_message
     }
     
-    endpoint = f"{backend_url.rstrip('/')}/api/logmon/upload"
+    base_url = backend_url.rstrip('/')
+    if base_url.endswith('/api/logmon'):
+        endpoint = f"{base_url}/upload"
+    else:
+        endpoint = f"{base_url}/api/logmon/upload"
     
     headers = {
         "Content-Type": "application/json",

@@ -14,7 +14,7 @@ SSH_USER="ksh"                           # SSH 사용자 이름
 SSH_HOST_INT="192.168.0.6"               # 홈서버 내부 IP
 SSH_HOST_EXT="125.190.25.48"             # 홈서버 외부 공인 IP
 SSH_PORT="8193"                          # SSH 포트
-REMOTE_PROJECT_DIR="/home/ksh/Desktop/Project/Logmon" # 홈서버 내 프로젝트 절대 경로
+REMOTE_PROJECT_DIR="/home/ksh/logmon"      # 홈서버 내 프로젝트 절대 경로
 DEFAULT_COMMIT_MSG="deploy: auto-deploy update" # 기본 커밋 메시지
 # --------------------------------------------------
 
@@ -64,7 +64,7 @@ else
     echo -e "${GREEN}[성공] 로컬 코드 원격 저장소 푸시 완료.${NC}"
 fi
 
-# SSH 접속 호스트 자동 판별 (내부망 우선 접속 체크)
+# SSH 접속 호자동 판별 (내부망 우선 접속 체크)
 echo -e "${BLUE}>>> 5. 홈서버 SSH 접속 가능 여부 체크 중...${NC}"
 if python3 -c "import socket; s = socket.socket(); s.settimeout(2); s.connect(('$SSH_HOST_INT', $SSH_PORT))" 2>/dev/null; then
     SSH_HOST="$SSH_HOST_INT"
@@ -85,7 +85,7 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   # 프로젝트 폴더 탐색 및 이동 (리눅스 경로 후보군 동적 스캔)
   TARGET_DIR="${REMOTE_PROJECT_DIR}"
   if [ ! -d "\$TARGET_DIR" ]; then
-    for alt in "/home/${SSH_USER}/Desktop/Project/Logmon" "/home/${SSH_USER}/Project/Logmon" "/home/${SSH_USER}/Logmon" "\$HOME/Desktop/Project/Logmon" "\$HOME/Logmon" "\$HOME/Project/Logmon"; do
+    for alt in "/home/${SSH_USER}/logmon" "/home/${SSH_USER}/Logmon" "/home/${SSH_USER}/Desktop/Project/Logmon" "/home/${SSH_USER}/Project/Logmon" "\$HOME/logmon" "\$HOME/Logmon"; do
       if [ -d "\$alt" ]; then
         TARGET_DIR="\$alt"
         break

@@ -82,13 +82,18 @@ footer { visibility: hidden; }
     color: #1E293B;
 }
 
-/* 챗 아바타 아이콘 제거 및 레이아웃 조정 */
-[data-testid="chatAvatarIcon"],
-[data-testid="stChatMessageAvatar"] {
-    display: none !important;
-}
+/* 챗 아바타 레이아웃 조정 */
 [data-testid="stChatMessageContent"] {
-    margin-left: 0 !important;
+    margin-left: 0.5rem !important;
+}
+[data-testid="stChatMessageAvatar"] img {
+    mix-blend-mode: multiply;
+}
+/* 사용자 아바타 아이콘 크기를 챗봇보다 약간 작게 조절 */
+[data-testid="stChatMessage"]:nth-child(even) [data-testid="stChatMessageAvatar"] img,
+[data-testid="stChatMessage"]:nth-child(even) [data-testid="stChatMessageAvatar"] {
+    width: 26px !important;
+    height: 26px !important;
 }
 
 /* 챗 인풋 창 고정 및 둥근 스타일 처리 */

@@ -128,11 +128,18 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "과거 로그 컨텍스트에 대해 무엇이든 물어보세요!"}]
+    st.session_state.messages = [{"role": "assistant", "content": "당신이 한 작업에 대해 무엇이든 물어보세요!"}]
+
+# 대화 아이콘 로드 (Base64)
+user_avatar_b64 = get_base64_image("frontend/assets/icons/icon_user.png")
+bot_avatar_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
+user_avatar = f"data:image/png;base64,{user_avatar_b64}"
+assistant_avatar = f"data:image/png;base64,{bot_avatar_b64}"
 
 # 기존 대화 렌더링
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    avatar = user_avatar if msg["role"] == "user" else assistant_avatar
+    with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
 # 채팅 입력창
@@ -146,11 +153,11 @@ with st.form("chat_form", clear_on_submit=True):
 if submit_btn and user_query:
     # 유저 메시지 화면 추가
     st.session_state.messages.append({"role": "user", "content": user_query})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=user_avatar):
         st.markdown(user_query)
         
     # AI 봇 응답 (스피너)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=assistant_avatar):
         with st.spinner("과거 로그 검색 및 AI 분석 중..."):
             ai_answer = send_chat(user_query)
             st.markdown(ai_answer)

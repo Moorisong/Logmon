@@ -16,7 +16,7 @@ def test_fetch_stats_request_exception(mock_st_markdown, mock_requests_get):
     mock_requests_get.side_effect = requests.exceptions.RequestException("Mocked connection error")
     
     # Call the function
-    result = fetch_stats.__wrapped__() # call the unwrapped function because of st.cache_data
+    result = fetch_stats() # call the function
     
     # Assert st.markdown was called to render custom HTML style error
     assert mock_st_markdown.called
@@ -50,7 +50,7 @@ def test_fetch_stats_success(mock_requests_get):
     }
     mock_requests_get.return_value = mock_response
     
-    result = fetch_stats.__wrapped__()
+    result = fetch_stats()
     
     # is_online=True 가 정상 병합되었는지 검증
     assert result["is_online"] is True

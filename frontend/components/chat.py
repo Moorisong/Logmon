@@ -110,7 +110,8 @@ def render_chat_interface(is_error_state: bool, is_local: bool):
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([0.85, 0.15])
         with col1:
-            user_query = st.text_input("질문", placeholder="질문 내용을 입력하세요.", label_visibility="collapsed", disabled=disabled_state)
+            placeholder_text = "어시스턴트의 답변이 끝난 후 입력할 수 있습니다." if is_waiting else "질문 내용을 입력하세요."
+            user_query = st.text_input("질문", placeholder=placeholder_text, label_visibility="collapsed", disabled=disabled_state)
         with col2:
             submit_btn = st.form_submit_button("전송", use_container_width=True, disabled=disabled_state)
 

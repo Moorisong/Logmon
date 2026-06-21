@@ -162,3 +162,27 @@ async def get_stats(
 ):
     stats_data = get_dashboard_stats(user_key=api_key)
     return stats_data
+
+@router.delete("/uninstall", status_code=status.HTTP_200_OK)
+async def uninstall_and_wipe_agent(
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    에이전트 수동 완전 삭제 발생 시 동기 호출되며, 해당 유저 키로 연동된 
+    SQLite 및 Chroma DB 벡터 리소스를 백그라운드 워커를 통해 물리적으로 일괄 증발시킵니다.
+    """
+    from backend.db.sqlite_handler import delete_all_logs_by_user
+    from backend.db.chroma_handler import delete_vectors_by_user_key
+
+    try:
+        background_tasks.add_task(delete_vectors_by_user_key, api_key)
+        background_tasks.add_task(delete_all_logs_by_user, api_key)
+        logger.info(f"🗑️ 사용자 [{api_key}] 에이전트 폐기 스케줄 등록 완료 (SQLite & Chroma DB)")
+        return {"status": "success", "message": "Agent wipe pipeline has been registered successfully."}
+    except Exception as e:
+        logger.error(f"에이전트 정보 폐기 파이프라인 트리거 에러: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server core agent data wipe workflow failed"
+        )

@@ -22,12 +22,9 @@ def check_duplicate_log(user_key: str, timestamp: str) -> bool:
         return bool(result)
     except sqlite3.Error as e:
         logger.error(f"중복 확인 중 에러 발생: {e}")
-        # 안전한 폴백: 에러 시 일단 중복으로 간주하지 않거나 재시도할 수 있게 처리하지만,
-        # 여기서는 False를 반환하여 삽입 시도하게 두고 DB 에러 로그를 남깁니다.
         return False
     finally:
         conn.close()
-
 
 def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     """
@@ -37,12 +34,10 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     user_key = data.get("user_key")
     timestamp = data.get("timestamp")
     
-    # 1. 멱등성 검증 (Idempotency Check)
     if check_duplicate_log(user_key, timestamp):
         logger.info(f"중복된 로그 삽입 스킵: {user_key} at {timestamp}")
         return None
 
-    # 2. 바인딩 삽입 (SQL Injection 방어)
     insert_query = """
         INSERT INTO ide_activity_logs (
             user_key, source_tool, timestamp, event_type, 
@@ -51,7 +46,6 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     
-    # 안전하게 값 할당. None이 들어갈 수 있는 부분 처리
     params = (
         user_key,
         data.get("source_tool", "UNKNOWN_TOOL"),
@@ -67,7 +61,6 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     
     conn = get_connection()
     try:
-        # isolation_level=None 이므로 수동 트랜잭션 시작 제어
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
         
@@ -97,12 +90,9 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
     try:
         cursor = conn.cursor()
         
-        # 1. 전체 누적 건수
         cursor.execute("SELECT COUNT(id) FROM ide_activity_logs WHERE user_key = ?", (user_key,))
         total_logs = cursor.fetchone()[0] or 0
         
-        # 2. 오늘 사용된 전체 토큰 수
-        # timestamp는 YYYY-MM-DD HH:MM:SS 형식이므로, 오늘 날짜(YYYY-MM-DD)와 일치하는 것을 찾음
         cursor.execute("""
             SELECT SUM(input_tokens + output_tokens) 
             FROM ide_activity_logs 
@@ -110,7 +100,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         today_tokens = cursor.fetchone()[0] or 0
         
-        # 3. 코드 블록 포함 비율
         cursor.execute("""
             SELECT COUNT(id) 
             FROM ide_activity_logs 
@@ -119,8 +108,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         code_blocks = cursor.fetchone()[0] or 0
         has_code_ratio = round((code_blocks / total_logs * 100), 1) if total_logs > 0 else 0.0
         
-        # 4. 최근 7일 트렌드 (날짜별 발생 건수)
-        # SQLite date 함수를 이용해 그룹화
         cursor.execute("""
             SELECT date(timestamp) as log_date, COUNT(id) as count
             FROM ide_activity_logs
@@ -130,7 +117,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         rows = cursor.fetchall()
         
-        # 5. 에이전트 가동 상태 메트릭 (uptime, total_lines, total_bytes, last_sync_time)
         cursor.execute("""
             SELECT 
                 MIN(timestamp) as first_log,
@@ -142,7 +128,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         metric_row = cursor.fetchone()
         
-        # 가장 최근의 에이전트 상태 확인 (AGENT_INSTALL vs AGENT_UNINSTALL)
         cursor.execute("""
             SELECT event_type FROM ide_activity_logs 
             WHERE user_key = ? AND source_tool = 'Agent CLI' AND event_type IN ('AGENT_INSTALL', 'AGENT_UNINSTALL')
@@ -152,7 +137,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         if state_row:
             is_agent_installed = (state_row[0] == 'AGENT_INSTALL')
         else:
-            # 상태 로그가 없을 경우 기존 레거시 폴백 판별
             cursor.execute("""
                 SELECT COUNT(id) FROM ide_activity_logs 
                 WHERE user_key = ? AND source_tool != 'Manual Upload UI'
@@ -177,7 +161,6 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         else:
             uptime_days = 0
 
-        # 날짜 누락 방지: 최근 7일치 배열 강제 생성
         trend_7d = []
         date_counts = {row[0]: row[1] for row in rows}
         
@@ -221,12 +204,10 @@ def get_total_db_size_mb() -> float:
 
     total_bytes = 0
     
-    # 1. SQLite 크기 측정
     sqlite_path = get_db_path()
     if os.path.exists(sqlite_path):
         total_bytes += os.path.getsize(sqlite_path)
         
-    # 2. Chroma DB 디렉토리 크기 합산
     chroma_dir = get_chroma_dir()
     if os.path.exists(chroma_dir):
         for root, dirs, files in os.walk(chroma_dir):
@@ -236,9 +217,6 @@ def get_total_db_size_mb() -> float:
     return total_bytes / (1024 * 1024)
 
 def cleanup_ttl_logs() -> list[int]:
-    """
-    7일이 지난 오래된 로그를 삭제하고 삭제된 레코드 ID 리스트를 반환합니다.
-    """
     conn = get_connection()
     deleted_ids = []
     try:
@@ -265,9 +243,6 @@ def cleanup_ttl_logs() -> list[int]:
     return deleted_ids
 
 def cleanup_old_logs(limit: int = 100) -> list[int]:
-    """
-    용량 상한선에 도달했을 때 가장 오래된 로그를 삭제하고 삭제된 ID 리스트를 반환합니다.
-    """
     conn = get_connection()
     deleted_ids = []
     try:
@@ -292,3 +267,26 @@ def cleanup_old_logs(limit: int = 100) -> list[int]:
         conn.close()
         
     return deleted_ids
+
+def delete_all_logs_by_user(user_key: str) -> int:
+    """
+    특정 API Key 소유자의 모든 수집 활동 로그 레코드를 SQLite에서 일괄 물리 격리 삭제 처리합니다.
+    """
+    conn = get_connection()
+    deleted_count = 0
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION;")
+        
+        cursor.execute("DELETE FROM ide_activity_logs WHERE user_key = ?", (user_key,))
+        deleted_count = cursor.rowcount
+        
+        cursor.execute("COMMIT;")
+        logger.info(f"⚙️ SQLite 클리닝 완료. 유저 [{user_key}] 레코드 완전 파쇄 완료. (건수: {deleted_count})")
+        return deleted_count
+    except sqlite3.Error as e:
+        logger.error(f"SQLite 유저 데이터 파쇄 프로세싱 예외 발생: {e}")
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

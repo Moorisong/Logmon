@@ -32,17 +32,17 @@ else
     exit 1
 fi
 
-# 2. 백엔드에 제거 노티 전송 (UX 동기화용 메타 데이터)
+# 2. 백엔드 데이터 완전 클리닝 요청 (서버 데이터 0으로 강제 초기화)
 CONFIG_FILE="$HOME/.logmon_config.json"
 if [ -f "$CONFIG_FILE" ]; then
     B_URL=$(grep -o '"backend_url": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     A_KEY=$(grep -o '"api_key": *"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     if [ -n "$B_URL" ] && [ -n "$A_KEY" ]; then
-        curl -s -X POST \
+        echo "📡 서버에서 기존 누적 세션 및 벡터 로그 데이터를 원격 초기화 중..."
+        curl -s -X DELETE \
           -H "Content-Type: application/json" \
           -H "X-LogMon-API-Key: $A_KEY" \
-          -d "{\"source_tool\": \"Agent CLI\", \"event_type\": \"AGENT_UNINSTALL\", \"raw_message\": \"Logmon 에이전트 제거 완료\"}" \
-          "$B_URL/api/logmon/upload" >/dev/null || true
+          "$B_URL/api/logmon/uninstall" >/dev/null || true
     fi
 fi
 

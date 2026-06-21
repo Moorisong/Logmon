@@ -10,10 +10,11 @@
 # ==============================================================================
 
 # --- 사용자 설정 영역 (홈서버 환경에 맞춰 수정하세요) ---
-SSH_USER="shkim"                         # SSH 사용자 이름
-SSH_HOST="your-home-server-ip"           # 홈서버 공인 IP 또는 도메인
-SSH_PORT="22"                            # SSH 포트 (기본값: 22)
-REMOTE_PROJECT_DIR="/path/to/Logmon"    # 홈서버 내 프로젝트 절대 경로
+SSH_USER="ksh"                           # SSH 사용자 이름
+SSH_HOST_INT="192.168.0.6"               # 홈서버 내부 IP
+SSH_HOST_EXT="125.190.25.48"             # 홈서버 외부 공인 IP
+SSH_PORT="22"                            # SSH 포트
+REMOTE_PROJECT_DIR="/Users/ksh/Desktop/Project/Logmon" # 홈서버 내 프로젝트 절대 경로
 DEFAULT_COMMIT_MSG="deploy: auto-deploy update" # 기본 커밋 메시지
 # --------------------------------------------------
 
@@ -63,21 +64,22 @@ else
     echo -e "${GREEN}[성공] 로컬 코드 원격 저장소 푸시 완료.${NC}"
 fi
 
-# SSH 접속 검증 및 정보 확인
-if [ "$SSH_HOST" = "your-home-server-ip" ]; then
-    echo -e "${YELLOW}[경고] deploy.sh 상단의 SSH 설정 정보가 수정되지 않았습니다.${NC}"
-    echo -e "배포 스크립트를 사용하기 위해 홈서버 SSH 접속 주소 및 경로를 입력해주세요."
-    read -p "홈서버 IP/도메인: " SSH_HOST
-    read -p "홈서버 SSH 유저: " SSH_USER
-    read -p "홈서버 내 프로젝트 절대 경로: " REMOTE_PROJECT_DIR
+# SSH 접속 호스트 자동 판별 (내부망 우선 접속 체크)
+echo -e "${BLUE}>>> 5. 홈서버 SSH 접속 가능 여부 체크 중...${NC}"
+if nc -z -w 2 "$SSH_HOST_INT" "$SSH_PORT" 2>/dev/null; then
+    SSH_HOST="$SSH_HOST_INT"
+    echo -e "접속 경로: ${GREEN}내부망 (인프라 내부 직접 연결: ${SSH_HOST})${NC}"
+else
+    SSH_HOST="$SSH_HOST_EXT"
+    echo -e "접속 경로: ${YELLOW}외부망 (공인 IP 우회 연결: ${SSH_HOST})${NC}"
 fi
 
-echo -e "${BLUE}>>> 5. 홈서버 원격 접속 및 배포 업데이트 시작...${NC}"
+echo -e "${BLUE}>>> 6. 홈서버 원격 접속 및 배포 업데이트 시작...${NC}"
 echo -e "접속 대상: ${GREEN}${SSH_USER}@${SSH_HOST}:${SSH_PORT}${NC}"
 echo -e "원격 경로: ${GREEN}${REMOTE_PROJECT_DIR}${NC}"
 
 # SSH 명령어를 통해 원격 서버 제어
-ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
+ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   set -e
   echo -e "\n=== 원격 서버 작업 시작 ==="
   

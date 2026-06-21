@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
 
 # requirements 복사 및 설치
 COPY backend/requirements.txt .
+# N95 등 로컬 CPU 환경을 위해 무거운 NVIDIA CUDA 패키지를 제외한 CPU 전용 PyTorch를 먼저 가볍게 설치합니다.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 1) 백엔드 소스코드 전체 복사

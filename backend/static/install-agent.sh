@@ -2,7 +2,7 @@
 set -e
 
 # 1. 환경 변수 검증 및 기본값 할당
-CLI_VER="${CLI_VERSION:-v1.0.0}"
+CLI_VER="${CLI_VERSION:-v1.0.6}"
 if [[ ! "$CLI_VER" =~ ^v ]]; then
     CLI_VER="v$CLI_VER"
 fi

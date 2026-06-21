@@ -1,7 +1,8 @@
 import datetime
 import logging
+import os  # <-- 동적 스크립트 파일 처리를 위해 os 임포트 추가
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response  # <-- Response 추가
 from pydantic import BaseModel
 
 from backend.api.dependencies import verify_api_key
@@ -36,6 +37,42 @@ def run_chroma_pipeline(log_id: int, data: dict):
     except Exception as e:
         # 이미 SQLite에는 적재되었으므로 에러 로그만 남김
         logger.error(f"백그라운드 Chroma DB 적재 실패 (log_id: {log_id}): {e}")
+
+@router.get("/agent-setup-script", status_code=status.HTTP_200_OK)
+async def get_install_script():
+    """
+    서버의 API Key와 가비아 도메인 주소를 install-agent.sh에 
+    동적으로 주입하여 에이전트(CLI)에게 문자열 텍스트로 반환합니다.
+    """
+    # 1. 원본 쉘 스크립트 경로 확인 (Docker 볼륨 및 실행 환경 고려)
+    script_path = "backend/static/install-agent.sh"
+    if not os.path.exists(script_path):
+        script_path = os.path.join(os.path.dirname(__file__), "..", "static", "install-agent.sh")
+
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"설치 스크립트 파일을 읽을 수 없습니다: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Installation script source file not found"
+        )
+    
+    # 2. 서버 .env에 등록된 실제 허용된 API Key 목록 가져오기
+    allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
+    # 쉼표(,)로 분리되어 여러 개가 등록되어 있을 경우 첫 번째 키를 배포 마스터 키로 획득
+    primary_key = allowed_keys.split(",")[0].strip() 
+    
+    # 가비아 서브도메인을 베이스 URL로 고정
+    server_url = "http://logmon.haroo.site" 
+
+    # 3. 스크립트 내부의 기본 주석/더미 설정을 진짜 서버 정보로 동적 치환(Replace)
+    content = content.replace('export API_KEY="default_dev_key"', f'export API_KEY="{primary_key}"')
+    content = content.replace('export BACKEND_URL="http://localhost:3008"', f'export BACKEND_URL="{server_url}"')
+
+    # 4. 쉘 스크립트가 로컬 PC 터미널에서 pipe( | bash )를 통해 바로 실행될 수 있도록 plain 텍스트로 리턴
+    return Response(content=content, media_type="text/plain")
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_log(

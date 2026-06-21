@@ -9,22 +9,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 def test_local_env_detection():
     # localhost인 경우 로컬 환경으로 탐지하는지 테스트
     backend_url_local = "http://localhost:8000"
-    is_local = "localhost" in backend_url_local or "127.0.0.1" in backend_url_local or os.getenv("LOGMON_ENV", "local") == "local"
+    is_local = ("localhost" in backend_url_local or "127.0.0.1" in backend_url_local) and "logmon-backend" not in backend_url_local and "haroo.site" not in backend_url_local
     assert is_local is True
 
-    # 외부 도메인이고 LOGMON_ENV가 production인 경우 로컬 환경이 아닌 것으로 탐지하는지 테스트
-    with patch.dict(os.environ, {"LOGMON_ENV": "production"}):
-        backend_url_prod = "https://logmon.haroo.site"
-        env_val = os.getenv("LOGMON_ENV", "local")
-        is_local_prod = ("localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod or env_val == "local") and "haroo.site" not in backend_url_prod
-        assert is_local_prod is False
+    # 도커 백엔드 도메인(logmon-backend)인 경우 로컬 환경이 아닌 것으로 탐지하는지 테스트
+    backend_url_container = "http://logmon-backend:8000"
+    is_local_container = ("localhost" in backend_url_container or "127.0.0.1" in backend_url_container) and "logmon-backend" not in backend_url_container and "haroo.site" not in backend_url_container
+    assert is_local_container is False
 
-    # 외부 도메인이고 LOGMON_ENV가 local이어도 로컬 환경이 아닌 것으로 탐지하는지 테스트 (고도화 방어 코드 검증)
-    with patch.dict(os.environ, {"LOGMON_ENV": "local"}):
-        backend_url_prod = "https://logmon.haroo.site"
-        env_val = os.getenv("LOGMON_ENV", "local")
-        is_local_prod = ("localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod or env_val == "local") and "haroo.site" not in backend_url_prod
-        assert is_local_prod is False
+    # 외부 도메인인 경우 로컬 환경이 아닌 것으로 탐지하는지 테스트
+    backend_url_prod = "https://logmon.haroo.site"
+    is_local_prod = ("localhost" in backend_url_prod or "127.0.0.1" in backend_url_prod) and "logmon-backend" not in backend_url_prod and "haroo.site" not in backend_url_prod
+    assert is_local_prod is False
 
 def test_mock_data_structure():
     # 주입되는 목 데이터 구조 유효성 검증 (전체 stats 형태)

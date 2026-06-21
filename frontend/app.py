@@ -9,7 +9,7 @@ from frontend.utils.image_helper import get_base64_image
 from frontend.components.dashboard import render_dashboard, render_empty_state
 from frontend.components.chat import render_chat_interface
 
-is_local = ("localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL or os.getenv("LOGMON_ENV", "local") == "local") and "haroo.site" not in BACKEND_URL
+is_local = ("localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL) and "logmon-backend" not in BACKEND_URL and "haroo.site" not in BACKEND_URL
 
 # 1. 페이지 셋업 및 CSS 주입
 icon_path = os.path.join(os.path.dirname(__file__), "assets", "icons", "icon_logo.png")

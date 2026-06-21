@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response
-from fastapi.responses import FileResponse  # <-- 정적 파일 직통 스트리밍 서빙을 위해 추가
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.api.dependencies import verify_api_key
@@ -19,7 +19,6 @@ class LogPayload(BaseModel):
     source_tool: str
     event_type: str
     raw_message: str
-    # 선택적 메타데이터
     task_name: Optional[str] = "UNKNOWN"
     duration_seconds: Optional[int] = 0
     input_tokens: Optional[int] = 0
@@ -30,9 +29,6 @@ class ChatRequest(BaseModel):
     question: str
 
 def run_chroma_pipeline(log_id: int, data: dict):
-    """
-    백그라운드에서 실행될 Chroma DB 임베딩/적재 파이프라인
-    """
     try:
         process_and_store_vector(log_id, data)
     except Exception as e:
@@ -58,7 +54,7 @@ async def get_install_script():
             detail="Installation script source file not found"
         )
     
-    # 쉘 템플릿 파일 내부 텍스트 중복 누적 완벽 차단 안전장치
+    # 쉘 템플릿 파일 내부 텍스트 중복 누적 방지 안전장치
     if "#!/usr/bin/env bash" in content:
         parts = content.split("#!/usr/bin/env bash")
         if len(parts) > 2:
@@ -67,36 +63,34 @@ async def get_install_script():
     allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
     primary_key = allowed_keys.split(",")[0].strip() 
     
-    # 가비아 SSL 서브도메인을 베이스 URL로 안전하게 고정
     server_url = "https://logmon.haroo.site" 
 
-    # 쉘 스크립트 내부 템플릿 변수를 서버 환경 변수로 완벽 치환
-    content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
-    content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
+    # 안전한 특수 격리 태그 치환식 적용
+    content = content.replace('__LOGMON_TARGET_URL__', server_url)
+    content = content.replace('__LOGMON_TARGET_KEY__', primary_key)
 
     return Response(content=content, media_type="text/plain")
 
-# [★핵심 기능] Nginx가 안전하게 토스해주는 /api/logmon/static/ 파일 요청을 직접 받아서 파일로 안전하게 응답합니다.
 @router.get("/static/{file_name}")
 async def get_static_file(file_name: str):
     """
-    에이전트 구동에 필요한 핵심 파이썬 소스 파일들을 
-    도커 내부 경로에서 직접 탐색하여 스트리밍 다운로드 서빙합니다.
+    도커 및 로컬 실행 환경을 모두 고려하여 absolute path 기준 구조로
+    static 디렉터리 내의 파이썬 에이전트 소스들을 안전하게 스트리밍합니다.
     """
-    static_dir = "backend/static"
-    if not os.path.exists(static_dir):
-        static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-        
+    # [교정] 파일의 위치를 기준으로 backend/static 절대 경로 연산식 확정
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(current_dir)  # api 폴더의 상위인 backend 폴더 진입
+    static_dir = os.path.join(base_dir, "static")
     file_path = os.path.join(static_dir, file_name)
     
+    # 실제 파일 존재 여부 실시간 확인 및 가시성 로그 확보
     if not os.path.exists(file_path):
-        logger.error(f"요청된 정적 파일을 찾을 수 없습니다: {file_path}")
+        logger.error(f"🚨 [정적 파일 누락 확인] 지정된 경로에 파일이 존재하지 않습니다: {file_path}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"File {file_name} not found in static repository."
+            detail=f"File {file_name} not found in container static storage."
         )
         
-    # 파일 확장자에 따른 적절한 미디어 타입 반환
     media_type = "application/x-python" if file_name.endswith(".py") else "text/plain"
     return FileResponse(path=file_path, media_type=media_type, filename=file_name)
 
@@ -106,12 +100,7 @@ async def upload_log(
     background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
 ):
-    """
-    수집기 에이전트로부터 로그를 전송받아 SQLite에 적재하고,
-    백그라운드에서 Chroma DB 벡터 처리를 트리거합니다.
-    """
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
     data = payload.model_dump()
     data["user_key"] = api_key
     data["timestamp"] = now_str
@@ -168,9 +157,6 @@ async def chat_with_logmon(
     payload: ChatRequest,
     api_key: str = Depends(verify_api_key)
 ):
-    """
-    사용자의 질문을 받아 RAG 엔진을 거쳐 Ollama 기반으로 답변을 생성합니다.
-    """
     answer = await ask_rag_agent(question=payload.question, user_key=api_key)
     return {"answer": answer}
 
@@ -178,8 +164,5 @@ async def chat_with_logmon(
 async def get_stats(
     api_key: str = Depends(verify_api_key)
 ):
-    """
-    프론트엔드 대시보드 화면 렌더링에 필요한 통계 데이터를 반환합니다.
-    """
     stats_data = get_dashboard_stats(user_key=api_key)
     return stats_data

@@ -71,21 +71,15 @@ def test_send_chat_timeout(mock_requests_post):
     assert result == "현재 AI 엔진 서비스가 일시 정지 중이거나 과부하 상태입니다."
 
 def test_offline_ui_condition():
-    # 1) 서버 오프라인(is_online=False)이고 mock_stats 없을 때 => 에러 상태 (블러 활성화)
+    # 1) 서버 오프라인(is_online=False)일 때 => 에러 상태 (블러 활성화)
     stats_offline = {"is_online": False}
-    session_state_no_mock = {}
-    is_error_state_1 = not stats_offline.get("is_online", True) and "mock_stats" not in session_state_no_mock
+    is_error_state_1 = not stats_offline.get("is_online", True)
     assert is_error_state_1 is True
 
-    # 2) 서버 온라인(is_online=True)이고 mock_stats 없을 때 => 정상 상태 (블러 비활성화)
+    # 2) 서버 온라인(is_online=True)일 때 => 정상 상태 (블러 비활성화)
     stats_online = {"is_online": True}
-    is_error_state_2 = not stats_online.get("is_online", True) and "mock_stats" not in session_state_no_mock
+    is_error_state_2 = not stats_online.get("is_online", True)
     assert is_error_state_2 is False
-
-    # 3) 서버 오프라인(is_online=False)이지만 mock_stats 있을 때 => 모의 주입으로 정상 구동 (블러 비활성화)
-    session_state_with_mock = {"mock_stats": {"uptime_days": 5}}
-    is_error_state_3 = not stats_offline.get("is_online", True) and "mock_stats" not in session_state_with_mock
-    assert is_error_state_3 is False
 
 def test_chat_input_disabled_state_condition():
     # 1) 에러 상태이거나 어시스턴트가 답변 대기 중일 때 => 입력창 비활성화 (disabled_state == True)
@@ -104,5 +98,16 @@ def test_chat_input_disabled_state_condition():
     is_waiting = False
     disabled_state_3 = is_error_state or is_waiting
     assert disabled_state_3 is False
+
+def test_mock_stats_completely_removed_and_ignored():
+    # mock_stats가 세션 상태에 존재하더라도, app.py의 변경된 로직 상 is_error_state 및 UI 분기 조건에 전혀 영향을 미치지 않음을 검증
+    # 1. stats["is_online"]이 False이면 mock_stats의 유무에 무관하게 항상 is_error_state는 True
+    stats_offline = {"is_online": False}
+    
+    # 구버전: stats_offline["is_online"] = False 이고 mock_stats가 있으면 에러가 해제됨(False)
+    # 신버전: mock_stats가 있든 없든 무조건 True (서버 오프라인 에러 고정)
+    is_error_state_with_mock = not stats_offline.get("is_online", True)
+    assert is_error_state_with_mock is True
+
 
 

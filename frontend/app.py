@@ -70,8 +70,8 @@ def live_dashboard_fragment():
                 unsafe_allow_html=True
             )
 
-    # 에러 상태 여부 판단 (백엔드가 오프라인이고, 세션에 mock_stats가 없는 경우)
-    is_error_state = not stats.get("is_online", True) and "mock_stats" not in st.session_state
+    # 에러 상태 여부 판단 (백엔드가 오프라인인 경우)
+    is_error_state = not stats.get("is_online", True)
     st.session_state["is_error_state"] = is_error_state
 
     if is_error_state:
@@ -91,10 +91,6 @@ def live_dashboard_fragment():
         st.markdown("<div style='margin-bottom: 30px;'>로컬 개발 PC 환경 트렌드를 파악하고 과거 이력에 대해 질문하세요.</div>", 
         unsafe_allow_html=True
         )
-
-    if "mock_stats" in st.session_state:
-        for k, v in st.session_state["mock_stats"].items():
-            stats[k] = v
 
     if is_error_state:
         # 에러 상태일 때 오직 에러 알림창(stAlert)만 또렷하게 남기고 페이지 전체의 모든 요소를 블러/비활성화 처리

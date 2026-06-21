@@ -18,6 +18,16 @@ load_css()
 logo_b64 = get_base64_image("frontend/assets/icons/icon_logo.png")
 data_b64 = get_base64_image("frontend/assets/icons/icon_data.png")
 
+# [★동적 주소 가공] 유저가 브라우저에 치고 들어온 외부 주소(IP 혹은 도메인)를 기반으로 백엔드 외부 주소를 추출합니다.
+current_host = st.context.headers.get("host", BACKEND_URL)
+
+if ":" in current_host:
+    # 예: 125.190.25.48:3007 -> 프론트엔드가 3007이면 백엔드는 외부 포트 3008로 연결되도록 매핑
+    base_external_url = f"http://{current_host.split(':')[0]}:3008"
+else:
+    # 예: 나중에 logmon.haroo.site 도메인을 정식 연결했을 때를 위한 처리
+    base_external_url = f"http://{current_host}/api"
+
 # 2. 뒤로 가기 버튼 (좌측 상단에 배치, 버튼 스타일 적용)
 st.markdown('''
     <div style="margin-top: 10px; margin-bottom: 15px;">
@@ -39,10 +49,10 @@ st.markdown(f'''
     </div>
 ''', unsafe_allow_html=True)
 
-# 4. 설치 안내 콘텐츠
+# 4. 설치 안내 콘텐츠 (내부 주소 BACKEND_URL 대신 조립된 base_external_url 반영)
 with st.container(border=True):
-    mac_cmd = f"curl -sL {BACKEND_URL}/api/logmon/static/install-agent.sh | bash"
-    win_cmd = f"Invoke-WebRequest -Uri {BACKEND_URL}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\\install-agent.ps1"
+    mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/install-agent.sh | bash"
+    win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/install-agent.ps1 -OutFile install-agent.ps1; .\\install-agent.ps1"
 
     tab1, tab2 = st.tabs(["macOS / Linux", "Windows"])
 
@@ -105,8 +115,8 @@ with st.container(border=True):
         # 화면상에서는 마스킹 처리된 주소 제공
         st.code("curl -sL ****** | bash", language="bash")
         
-        # 간접 복사 버튼 구성 (백엔드 실제 도메인과 주소 사용)
-        real_mac_cmd = f"curl -sL {BACKEND_URL}/api/logmon/static/uninstall-agent.sh | bash"
+        # [★변경] 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
+        real_mac_cmd = f"curl -sL {base_external_url}/api/logmon/static/uninstall-agent.sh | bash"
         
         import streamlit.components.v1 as components
         mac_html_template = """
@@ -149,8 +159,8 @@ with st.container(border=True):
         # 화면상에서는 마스킹 처리된 주소 제공
         st.code("Invoke-WebRequest -Uri ****** -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1", language="powershell")
         
-        # 간접 복사 버튼 구성 (백엔드 실제 도메인과 주소 사용)
-        real_win_cmd = f"Invoke-WebRequest -Uri {BACKEND_URL}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
+        # [★변경] 윈도우 제거 복사 버튼 주소도 진짜 외부 주소(base_external_url)를 기반으로 굽습니다.
+        real_win_cmd = f"Invoke-WebRequest -Uri {base_external_url}/api/logmon/static/uninstall-agent.ps1 -OutFile uninstall-agent.ps1; .\\uninstall-agent.ps1"
         
         win_html_template = """
             <button id="copy-win-btn" style="

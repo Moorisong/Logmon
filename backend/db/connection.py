@@ -68,6 +68,15 @@ def init_db():
         conn.close()
 
 
+def regexp_func(expr: str, item) -> bool:
+    if item is None:
+        return False
+    try:
+        import re
+        return re.search(expr, str(item), re.IGNORECASE) is not None
+    except Exception:
+        return False
+
 def get_connection() -> sqlite3.Connection:
     """
     SQLite DB 커넥션을 반환합니다.
@@ -76,9 +85,11 @@ def get_connection() -> sqlite3.Connection:
     try:
         # timeout을 주어 Database Lock 이슈 완화
         conn = sqlite3.connect(get_db_path(), timeout=10.0, isolation_level=None)
+        conn.create_function("REGEXP", 2, regexp_func)
         # 쿼리 시 dict 형태로 반환 접근을 위해 row_factory 사용 가능 (옵션)
         # conn.row_factory = sqlite3.Row 
         return conn
     except sqlite3.Error as e:
         logger.error(f"SQLite DB 연결 실패: {e}")
         raise
+

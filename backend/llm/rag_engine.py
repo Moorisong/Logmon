@@ -112,11 +112,11 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
     if guardrail_msg:
         return guardrail_msg
         
-    # 2. 스마트 프리필터링 (시간, 레벨, 키워드 쿼리 파서 작동)
-    start_time, end_time, event_type, keywords = parse_query_filters(question)
-    
-    # 3. Chroma DB 1차 검색
     try:
+        # 2. 스마트 프리필터링 (시간, 레벨, 키워드 쿼리 파서 작동)
+        start_time, end_time, event_type, keywords = parse_query_filters(question)
+        
+        # 3. Chroma DB 1차 검색
         results = query_vectors(
             query_text=question,
             n_results=top_k,
@@ -126,37 +126,40 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
             end_time=end_time,
             keywords=keywords
         )
-    except Exception as e:
-        logger.error(f"Chroma 검색 중 에러: {e}")
-        results = []
+            
+        # 4. 2-Stage Retrieval (리랭킹) 및 컨텍스트 부재 방어
+        docs = results[0] if results and len(results) > 0 and len(results[0]) > 0 else []
+        logger.info(f"Retrieved docs count: {len(docs)} for user_key: {user_key}, event_type: {event_type}, docs: {docs}")
         
-    # 4. 2-Stage Retrieval (리랭킹) 및 컨텍스트 부재 방어
-    docs = results[0] if results and len(results) > 0 and len(results[0]) > 0 else []
-    logger.info(f"Retrieved docs count: {len(docs)} for user_key: {user_key}, event_type: {event_type}, docs: {docs}")
-    
-    if not docs:
-        return "최근 기록된 작업 로그가 존재하지 않습니다."
+        if not docs:
+            return "최근 기록된 작업 로그가 존재하지 않습니다."
+            
+        # 리랭커를 통한 정렬 및 길이 조절 (Top-3, Max 2000자)
+        context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=2000)
         
-    # 리랭커를 통한 정렬 및 길이 조절 (Top-3, Max 2000자)
-    context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=2000)
-    
-    if not context_str.strip():
-        return "최근 기록된 작업 로그가 존재하지 않습니다."
+        if not context_str.strip():
+            return "최근 기록된 작업 로그가 존재하지 않습니다."
+            
+        # 출력 토큰 최소화를 위한 정규식 기반 공백 압축 적용
+        context_str = compress_context(context_str)
         
-    # 출력 토큰 최소화를 위한 정규식 기반 공백 압축 적용
-    context_str = compress_context(context_str)
-    
-    # 5. Window Memory 적용
-    history_context = get_conversation_context(user_key)
-    final_question = f"[이전 대화 내역]\n{history_context}\n\n[현재 질문]\n{question}" if history_context else question
-    final_question = compress_context(final_question)
+        # 5. Window Memory 적용
+        history_context = get_conversation_context(user_key)
+        final_question = f"[이전 대화 내역]\n{history_context}\n\n[현재 질문]\n{question}" if history_context else question
+        final_question = compress_context(final_question)
+            
+        # 6. 프롬프트 바인딩 및 추론
+        prompt = RAG_PROMPT_TEMPLATE.format(context=context_str, question=final_question)
+        answer = await generate_completion(prompt)
         
-    # 6. 프롬프트 바인딩 및 추론
-    prompt = RAG_PROMPT_TEMPLATE.format(context=context_str, question=final_question)
-    answer = await generate_completion(prompt)
-    
-    # 7. 대화 히스토리 저장
-    add_conversation(user_key, question, answer)
-    
-    return answer
+        # 7. 대화 히스토리 저장
+        add_conversation(user_key, question, answer)
+        
+        return answer
+    except Exception as pipeline_err:
+        logger.error(f"RAG 파이프라인 수행 실패 (SQLite Fallback 구동): {pipeline_err}")
+        # RAG 파이프라인 전체 에러 시 SQLite Fallback으로 정규식 검색해서 출력하게 보완
+        from backend.llm.client import query_sqlite_logs, generate_simulated_response
+        rows = query_sqlite_logs(question)
+        return generate_simulated_response(question, rows)
 

@@ -47,7 +47,7 @@ async def generate_completion(prompt: str) -> str:
         else:
             logger.error(f"Ollama API 알 수 없는 에러: {e}")
             
-        if ("localhost" in OLLAMA_HOST or "127.0.0.1" in OLLAMA_HOST) and os.getenv("LOGMON_ENV") != "test":
+        if os.getenv("LOGMON_ENV") != "test":
             logger.info("Ollama API 장애 발생. 로컬 모의 분석 텍스트 출력 (SQLite Fallback)")
             context, question = parse_prompt(prompt)
             rows = query_sqlite_logs(question or prompt)
@@ -74,6 +74,7 @@ def parse_prompt(prompt: str):
 
 def query_sqlite_logs(question: str) -> list:
     from backend.db.connection import get_connection
+    import re
     
     clean_question = question
     for word in ["오늘", "내가", "제일", "무슨", "일", "있었지", "질문", "대해", "알려줘", "분석", "해줘", "했어", "했지", "한거", "한거지", "어떻게"]:
@@ -94,13 +95,11 @@ def query_sqlite_logs(question: str) -> list:
             conditions.append("date(timestamp) = date('now', 'localtime')")
             
         if keywords:
-            keyword_conditions = []
-            for kw in keywords:
-                keyword_conditions.append("(raw_message LIKE ? OR task_name LIKE ? OR event_type LIKE ? OR source_tool LIKE ?)")
-                like_pat = f"%{kw}%"
-                params.extend([like_pat, like_pat, like_pat, like_pat])
-            if keyword_conditions:
-                conditions.append("(" + " OR ".join(keyword_conditions) + ")")
+            escaped_kws = [re.escape(kw) for kw in keywords if kw]
+            if escaped_kws:
+                pattern = "|".join(escaped_kws)
+                conditions.append("(raw_message REGEXP ? OR task_name REGEXP ? OR event_type REGEXP ? OR source_tool REGEXP ?)")
+                params.extend([pattern, pattern, pattern, pattern])
                 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)

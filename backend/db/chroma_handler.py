@@ -204,18 +204,32 @@ def query_vectors(
         )
         query_n = 100 if has_extra_filters else n_results
         
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=query_n,
-            where=where_filter if where_filter else None,
-            include=["documents", "metadatas"]
-        )
+        try:
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=query_n,
+                where=where_filter if where_filter else None,
+                include=["documents", "metadatas"]
+            )
+        except Exception as query_err:
+            logger.warning(f"Chroma DB 쿼리 실패(필터 문제 의심). 전체 검색 후 파이썬 단 필터링으로 Fallback합니다. 에러: {query_err}")
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=150,
+                include=["documents", "metadatas"]
+            )
         
         docs = results.get("documents", [])[0] if results.get("documents") else []
         metas = results.get("metadatas", [])[0] if results.get("metadatas") else []
         
         filtered_docs = []
         for doc, meta in zip(docs, metas):
+            # 0. user_key 및 event_type 파이썬 단 수동 필터링 (필터 예외 상황 대비)
+            if user_key and meta.get("user_key") != user_key:
+                continue
+            if event_type and meta.get("event_type") != event_type:
+                continue
+
             ts = meta.get("timestamp", "")
             
             # 1. 시간 범위 필터 적용
@@ -240,7 +254,10 @@ def query_vectors(
                 if not any(kw.lower() in doc_lower for kw in keywords):
                     continue
                     
-            filtered_docs.append(doc)
+                filtered_docs.append(doc)
+            else:
+                filtered_docs.append(doc)
+                
             if len(filtered_docs) >= n_results:
                 break
                 

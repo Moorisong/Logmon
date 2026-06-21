@@ -94,6 +94,9 @@ async def get_static_file(file_name: str):
     """
     도커 내부 absolute path 기준 구조로 static 디렉터리 내의 파이썬 에이전트 소스들을 안전하게 스트리밍합니다.
     """
+    if file_name == "uninstall-agent.sh":
+        return await get_uninstall_script()
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.dirname(current_dir)
     static_dir = os.path.join(base_dir, "static")
@@ -205,3 +208,15 @@ async def uninstall_and_wipe_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server core agent data wipe workflow failed"
         )
+
+@router.post("/force-clear", status_code=status.HTTP_200_OK)
+async def force_clear_by_key(target_key: str, background_tasks: BackgroundTasks):
+    """
+    [디버깅 치트키] 에이전트가 끊긴 상태에서 특정 유저 키의 모든 흔적을 0으로 청소합니다.
+    """
+    from backend.db.sqlite_handler import delete_all_logs_by_user
+    from backend.db.chroma_handler import delete_vectors_by_user_key
+    
+    background_tasks.add_task(delete_vectors_by_user_key, target_key)
+    background_tasks.add_task(delete_all_logs_by_user, target_key)
+    return {"status": "forced", "target": target_key}

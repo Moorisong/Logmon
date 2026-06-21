@@ -21,7 +21,9 @@
 backend/
 └── db/
     ├── connection.py          # SQLite 3 비동기/동기 커넥션 관리
-    ├── sqlite_handler.py      # SQLite CRUD (Insert, Select, Checkpoint)
+    ├── sqlite_handler.py      # SQLite CRUD 진입점 (Re-export 역할)
+    ├── sqlite_logs.py         # SQLite 로그 삽입, 중복 체크 및 삭제/클리닝
+    ├── sqlite_stats.py        # 대시보드 통계 집계 및 DB 크기 계산
     └── chroma_handler.py      # Chroma DB 컬렉션 초기화, 임베딩 적재 및 Query
 ```
 
@@ -47,7 +49,8 @@ CREATE TABLE IF NOT EXISTS ide_activity_logs (
 ```
 * 효율적인 쿼리를 위해 인덱스(`idx_activity_user_time`, `idx_activity_event_type`)가 정상 등록되어 있는지 교차 확인 및 생성합니다.
 
-#### 2단계: SQLite 데이터 핸들러 구현 (`sqlite_handler.py`)
+#### 2단계: SQLite 데이터 핸들러 구현 (`sqlite_handler.py` 및 하위 모듈)
+* `sqlite_handler.py`는 모듈 간결화(300줄 상한선 규칙)를 위해 `sqlite_logs.py`(로그 삽입/삭제/클리닝)와 `sqlite_stats.py`(대시보드 통계 집계)로 분리되어 있습니다.
 * 에이전트 인증 성공 후, 중복 로그 적재를 방지하기 위해 `user_key`와 `timestamp` 조합으로 사전 존재 여부를 확인(Idempotency Check)하는 `check_duplicate_log` 함수를 구현합니다.
 * 데이터 적재 시 SQL Injection을 차단하기 위해 매개변수화된 바인딩 쿼리(`?` placeholder)만을 사용하세요.
 

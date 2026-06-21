@@ -89,9 +89,11 @@ with st.container(border=True):
         # 유저 화면 상자에는 명품 감성의 주소 노출
         visible_npx = "npx @thiagomiki/logmon-cli"
         
-        # [★원클릭 UX 완성] 지저분한 환경변수를 전부 없애고, 백엔드 도메인 주소 정보까지 키 뒤에 안전하게 압축 주입!
-        # npx @thiagomiki/logmon-cli/유저키/백엔드URL 주소 형태가 복사됩니다.
-        hidden_npx = f"npx @thiagomiki/logmon-cli/{user_api_key}/{base_external_url.replace('http://', 'http__').replace('https://', 'https__')}"
+        # 백엔드 URL이 기본 로컬 주소인 경우 URL 매개변수 전송을 과감히 생략하여 간결함 극대화
+        if "localhost" in base_external_url or "127.0.0.1" in base_external_url:
+            hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key}"
+        else:
+            hidden_npx = f"npx @thiagomiki/logmon-cli {user_api_key} {base_external_url}"
         
         npx_html = f"""
         <div style="background-color: #0F172A; padding: 14px 18px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-family: 'Courier New', monospace; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">

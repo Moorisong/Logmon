@@ -47,10 +47,10 @@ services:
     ports:
       - "3007:8501"
     env_file:
-      - .env  # <── [추가] 프론트엔드 컨테이너도 .env 파일을 읽도록 설정합니다.
+      - .env
     environment:
       - BACKEND_URL=http://logmon-backend:8000
-      - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}  # <── [추가] 프론트엔드가 백엔드 API를 호출할 때 헤더에 실어 보낼 키를 전달합니다.
+      - LOGMON_API_KEY=${ALLOWED_API_KEYS}  # <── [★완벽 일치!] 파이썬이 기다리던 그 이름 그대로 비밀번호를 찔러넣어 줍니다!
     networks:
       - logmon-network
     depends_on:

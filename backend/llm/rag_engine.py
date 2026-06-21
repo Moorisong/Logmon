@@ -44,6 +44,7 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         
     # 4. 2-Stage Retrieval (리랭킹) 및 컨텍스트 부재 방어
     docs = results[0] if results and len(results) > 0 and len(results[0]) > 0 else []
+    logger.info(f"Retrieved docs count: {len(docs)} for user_key: {user_key}, event_type: {event_type}, docs: {docs}")
     
     if not docs:
         return "최근 기록된 작업 로그가 존재하지 않습니다."

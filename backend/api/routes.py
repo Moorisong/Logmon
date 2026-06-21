@@ -175,6 +175,7 @@ async def chat_with_logmon(
     payload: ChatRequest,
     api_key: str = Depends(verify_api_key)
 ):
+    logger.info(f"POST /chat request - question: {payload.question}, api_key: {api_key}")
     answer = await ask_rag_agent(question=payload.question, user_key=api_key)
     return {"answer": answer}
 

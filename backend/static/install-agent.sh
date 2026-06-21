@@ -2,12 +2,11 @@
 set -e
 
 echo "==============================================="
-echo "  🚀 Logmon Agent 설치 마법사 (macOS/Linux)  "
+echo "  👾 Logmon Agent 설치 마법사 (macOS/Linux)  "
 echo "==============================================="
 echo ""
 
-# [★교정] 프론트엔드가 주입해 준 주소가 있다면 그것을 사용하고, 없다면 대화형 입력을 받습니다.
-# 파이프(| bash) 실행 중에도 키보드 입력을 정상적으로 받기 위해 </dev/tty 장치를 연결했습니다.
+# [★교정] BACKEND_URL이 비어있을 때만 정확히 입력을 받습니다.
 if [ -z "$BACKEND_URL" ]; then
     read -p "백엔드 서버 주소를 입력하세요 (예: https://logmon.haroo.site): " BACKEND_URL < /dev/tty
 fi
@@ -19,10 +18,15 @@ else
     echo "  > 연결할 백엔드 서버 주소: $BACKEND_URL"
 fi
 
-# [★교정] API KEY 입력창도 파이프라인 먹통 방지를 위해 </dev/tty 장치 연결
-read -p "발급받은 보안 API Key를 입력하세요: " API_KEY < /dev/tty
+# [★진짜 최종 교정] API_KEY도 환경변수 주입이 되었다면 read 창을 완전히 건너뜁니다!
+if [ -z "$API_KEY" ]; then
+    read -p "발급받은 보안 API Key를 입력하세요: " API_KEY < /dev/tty
+fi
+
 if [ -z "$API_KEY" ]; then
     echo "  > [경고] API Key가 비어있습니다. 백엔드 전송이 거부될 수 있습니다."
+else
+    echo "  > 보안 인증 API Key 매핑 완료! ✓"
 fi
 
 # 2. 설정 파일 생성
@@ -109,15 +113,16 @@ fi
 
 # 5. [★귀염뽀짝 이스터 에그] 설치 완료 로그 및 Made by ksh 마크 주입
 echo ""
-echo "🎉 Logmon 로컬 수집기 설치가 완료되었습니다!"
+echo "Logmon 로컬 수집기 설치가 완료되었습니다!"
 echo "   백그라운드에서 매 5분마다 IDE 로그를 체크하여 서버로 전송합니다."
-echo "   제거를 원하시면 uninstall-agent.sh 를 실행하세요."
+echo "   제거를 원하시면 아래 명령어를 실행하세요:"
+echo "   curl -sL $BACKEND_URL/api/logmon/static/uninstall-agent.sh | bash"
 echo ""
 echo "==============================================="
 echo "       /\_/\   "
 echo "      ( o.o )  🐾 LogMon Agent is Watching You!"
 echo "       > ^ <   "
 echo "==============================================="
-echo "  [ System Build: v1.0.0 / Made by ksh ]"
+echo "  [ System Build: v1.0.0 / Made by ksh💗 ]"
 echo "==============================================="
 echo ""

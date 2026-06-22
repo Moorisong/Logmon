@@ -28,19 +28,28 @@ FUZZY_PATTERNS = [
 ]
 
 def check_guardrail(question: str) -> bool:
-    q_lower = question.lower()
+    q_lower = question.lower().strip()
     q_no_space = q_lower.replace(" ", "")
-    
+
+    # 0. 인사말 허용 패턴 — 짧은 인사는 가드레일 통과 (로그몬 친화 대화 허용)
+    #    '하이', '안녕', '반가워', 'hi', 'hello', '헬로' 등
+    GREETING_PATTERNS = [
+        r"^(하이|안녕|반가워|헬로|hi|hello|hey|어이|여보세요)[\s!?~]*$"
+    ]
+    for pattern in GREETING_PATTERNS:
+        if re.search(pattern, q_lower):
+            return True
+
     # 1. 키워드 매칭 (질문 원본 및 공백 제거 텍스트 기준)
     for keyword in DEV_KEYWORDS:
         if keyword in q_lower or keyword in q_no_space:
             return True
-            
+
     # 2. 정규식 패턴 매칭 (Fuzzy Match - 원본 및 공백 제거 텍스트 기준)
     for pattern in FUZZY_PATTERNS:
         if re.search(pattern, q_lower) or re.search(pattern, q_no_space):
             return True
-            
+
     return False
 
 

@@ -21,27 +21,28 @@ async def generate_completion(prompt: str) -> str:
     Ollama 엔드포인트 전송 전, 유저의 질문 의도가 
     SQLite 실시간 집계(SUM/COUNT) 요망 건인지 강제 사전 인터셉트합니다.
     """
-    # 1. 프롬프트 구조에서 유저가 진짜 던진 핵심 질문만 먼저 사출
+    # 1. 프롬프트 구조에서 유저가 진짜 던진 핵심 질문만 사출
+    #    ⚠️ question이 빈 문자열이면 의도 분기를 절대 타지 않음 (교차 오염 차단)
     context, question = parse_prompt(prompt)
-    target_text = (question or prompt).lower()
 
-    # 의도 판단 키워드셋 선언
-    IS_ERR_LOG_KEYWORDS = [
-        "로그", "에러", "오류", "정리", "error", "개수", "몇 개", "몇개",
-        "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
-    ]
-    IS_TIME_TOKEN_KEYWORDS = [
-        "시간", "토큰", "사용량", "사용시간", "duration", "token",
-    ]
+    if question:  # 질문 추출 성공 시에만 의도 인터셉터 진입
+        # 의도 판단 키워드셋 — question 텍스트에만 적용 (prompt 전체 절대 금지)
+        IS_ERR_LOG_KEYWORDS = [
+            "로그", "에러", "오류", "정리", "error", "개수", "몇 개", "몇개",
+            "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
+        ]
+        IS_TIME_TOKEN_KEYWORDS = [
+            "시간", "토큰", "사용량", "사용시간", "duration", "token",
+        ]
+        q_lower = question.lower()  # 반드시 question만 스캔, prompt 절대 불가
+        is_err_log_query = any(k in q_lower for k in IS_ERR_LOG_KEYWORDS)
+        is_time_token_query = any(k in q_lower for k in IS_TIME_TOKEN_KEYWORDS)
 
-    is_err_log_query = any(k in target_text for k in IS_ERR_LOG_KEYWORDS)
-    is_time_token_query = any(k in target_text for k in IS_TIME_TOKEN_KEYWORDS)
-
-    # 💡 [하이브리드 강제 인터셉터] 통계 및 집계성 메트릭 질문은 Ollama 상태에 관계없이 DB 쿼리로 조기 반환!
-    if is_err_log_query or is_time_token_query:
-        logger.info("[인터셉터] 통계 및 의도 파악 쿼리 감지 -> SQLite 집계 엔진 강제 구동")
-        rows = query_sqlite_logs(question or prompt)
-        return generate_simulated_response(question or prompt, rows)
+        # 💡 [하이브리드 강제 인터셉터] 통계 집계 의도는 Ollama 상태와 무관하게 DB 쿼리로 조기 반환
+        if is_err_log_query or is_time_token_query:
+            logger.info("[인터셉터] 의도 파악 쿼리 감지 -> SQLite 집계 엔진 구동")
+            rows = query_sqlite_logs(question)  # question만 전달, prompt 오염 차단
+            return generate_simulated_response(question, rows)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 여기서부터 일반 RAG 로그 분석용 기본 Ollama 라우팅 파이프라인
@@ -76,8 +77,10 @@ async def generate_completion(prompt: str) -> str:
             
         if os.getenv("LOGMON_ENV") != "test":
             logger.info("Ollama API 장애 발생. 로컬 모의 분석 텍스트 출력 (SQLite Fallback)")
-            rows = query_sqlite_logs(question or prompt)
-            return generate_simulated_response(question or prompt, rows)
+            # question 추출 실패 시 prompt 전체 오염을 막기 위해 빈 rows로 일반 응답 처리
+            safe_question = question if question else ""
+            rows = query_sqlite_logs(safe_question) if safe_question else []
+            return generate_simulated_response(safe_question, rows)
         return ERROR_FALLBACK_MESSAGE
 
 

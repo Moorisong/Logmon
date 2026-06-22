@@ -18,33 +18,33 @@ REAL_DB_PATH = "/app/data/logmon.db"
 
 async def generate_completion(prompt: str) -> str:
     """이전 답변 찌꺼기에 의한 오염을 100% 진공 세척하고 순수 유저 질문만 라우팅하는 엔진"""
-    # 🎯 1. 이전 챗봇 답변 잔상을 완벽히 분리수거하여 순수 질문만 징집
+    # 🎯 1. 기획서 5단계: 이전 챗봇 답변 잔상을 완벽히 분리수거하여 순수 질문만 징집
     question = parse_vacuum_clean_query(prompt)
     q_lower = question.lower()
     
     logger.info(f"[진공 세척 완료] 이전 답변 차단된 찐 유저 질문: '{question}'")
     
-    # 🎯 2. 상호 배타적 정밀 징집 분기 필터링 매트릭스
+    # 🎯 2. 상호 배타적 정밀 징집 분기 필터링 매트릭스 (우선순위 역전 및 정교화)
     
-    # [분기 A] 일주일 / 7일 범위 누적 통계 질의
-    if "일주일" in q_lower or "7일" in q_lower:
-        return get_fact_weekly_total_report()
-        
-    # [분기 B] SYSTEM / system 특정 흔적 질의
-    elif "system" in q_lower or "시스템" in q_lower:
+    # [분기 A] SYSTEM / system 특정 흔적 질의
+    if "system" in q_lower or "시스템" in q_lower:
         return get_fact_system_trace_report()
         
-    # [분기 C] 에러 / 오류 관련 본문 전수조사 질의
+    # [분기 B] 에러 / 오류 관련 본문 전수조사 질의
     elif "에러" in q_lower or "오류" in q_lower or "error" in q_lower or "fail" in q_lower:
         return get_fact_error_report()
         
-    # [분기 D] 토큰 사용량 / 역산 관련 질의
-    elif "토큰" in q_lower or "token" in q_lower or "사용량" in q_lower:
-        return get_fact_token_report()
-        
-    # [분기 E] 경고 로그 관련 질의
+    # [분기 C] 경고 로그 관련 질의 (3일, 경고 단어 저격)
     elif "경고" in q_lower or "warn" in q_lower:
         return get_fact_warning_report()
+
+    # [분기 D] 일주일 / 7일 범위 누적 통계 질의 (상단 잔상 오염 방지를 위해 경고/에러 밑으로 배치)
+    elif "일주일" in q_lower or "7일" in q_lower or "weekly" in q_lower:
+        return get_fact_weekly_total_report()
+        
+    # [분기 E] 토큰 사용량 / 역산 관련 질의
+    elif "토큰" in q_lower or "token" in q_lower or "사용량" in q_lower:
+        return get_fact_token_report()
         
     # [분기 F] 오늘 자 전체 개수 및 요약 기본 질의
     elif any(k in q_lower for k in ["개수", "몇개", "몇 개", "요약", "내역", "활동", "전체", "장부"]):
@@ -64,22 +64,28 @@ async def generate_completion(prompt: str) -> str:
 
 def parse_vacuum_clean_query(prompt: str) -> str:
     """이전 챗봇 답변이나 시스템 로그 찌꺼기가 남긴 단어 오염을 차단하고, 가장 최신의 순수 유저 텍스트만 리턴함"""
-    if "[User Query]" in prompt:
+    if not prompt:
+        return ""
+        
+    # 질문에 감싸진 따옴표나 잔여 노이즈 원천 제거
+    clean_q = prompt.replace('"', '').replace("'", "")
+    
+    if "[User Query]" in clean_q:
         try:
-            # 💡 1단계: 맨 마지막 유저 쿼리 블록 징집
-            parts = prompt.split("[User Query]")
+            # 💡 1단계: 맨 마지막 유저 쿼리 블록 분할 징집
+            parts = clean_q.split("[User Query]")
             last_part = parts[-1]
             
-            # 💡 2단계: 에이전트 턴 종결자 뒤쪽 제거
+            # 💡 2단계: 에이전트 턴 종결자 및 시작자 뒤쪽 제거
             clean_q = last_part.split("<end_of_turn>")[0]
+            clean_q = clean_q.split("<start_of_turn>")[0]
             
-            # 💡 3단계: 만에 하나 이전 모델 답변(model)이나 시스템 리포트 양식 문구 내용물이 섞여 있다면 원천 박멸
-            clean_q = clean_q.split("<start_of_turn>") [0]
-            clean_q = re.sub(r'(리포트|정밀|통계|조회|기준|시각|확인됨|가이드|우회|싱크|실측|지표|건수|개수임)', '', clean_q)
-            
+            # 💡 3단계: 글자 소멸 버그 제거 - 명사 삭제 정규식 전면 철폐 및 공백만 정제
             return clean_q.strip()
-        except Exception: pass
-    return prompt
+        except Exception: 
+            pass
+            
+    return clean_q.strip()
 
 
 def get_fact_system_trace_report() -> str:

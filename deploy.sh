@@ -156,7 +156,7 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   
   # 3. Docker Compose 빌드 및 실행
   echo -e "\e[34m[원격] Docker Compose 빌드 및 무중단 재빌드 시작...\e[0m"
-  if [ -n "${NO_CACHE_FLAG}" ]; then
+  if [ -n "$NO_CACHE_FLAG" ]; then
     echo -e "\e[33m[원격] 빌드 캐시를 사용하지 않고 재빌드 진행 중 (--no-cache)...\e[0m"
     docker compose build --no-cache && docker compose up -d
   else

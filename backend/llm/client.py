@@ -3,19 +3,20 @@ import httpx
 import logging
 import re
 from datetime import datetime
+import sqlite3
 from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
 
 logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://logmon-ollama:11434")
 try:
-    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "2")) # N95 서버 안정성을 위해 스레드 2로 제한
+    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "2"))
 except ValueError:
     OLLAMA_NUM_THREAD = 2
 
 MODEL_NAME = "llama3.2:1b"
 
-# [교정] 검증된 도커 내부의 찐 데이터베이스 금고 절대 경로로 통일
+# [교정] 검증된 도커 내부의 찐 데이터베이스 금고 절대 경로로 철저히 통일
 REAL_DB_PATH = "/app/data/logmon.db"
 
 async def generate_completion(prompt: str) -> str:
@@ -23,7 +24,6 @@ async def generate_completion(prompt: str) -> str:
     context, question = parse_prompt(prompt)
 
     if question:
-        # 겹치지 않게 명확하게 격리한 키워드셋
         IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
         IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token", "얼마나"]
         IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업", "로그 개수"]
@@ -33,7 +33,7 @@ async def generate_completion(prompt: str) -> str:
         is_time_token_query = any(k in q_lower for k in IS_TIME_TOKEN_KEYWORDS)
         is_total_log_query = any(k in q_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-        # 라우팅 우선순위 철저 정렬 (시간 -> 에러 -> 전체개수)
+        # 라우팅 우선순위 정렬
         if is_time_token_query:
             logger.info("[인터셉터] 1순위: 시간 및 토큰 누적 통계 분기 가동")
             rows = query_sqlite_logs(question)
@@ -87,9 +87,7 @@ def parse_prompt(prompt: str) -> tuple:
 
 
 def query_sqlite_logs(question: str) -> list:
-    import sqlite3
     try:
-        # [교정] 가짜 깡통 경로 걷어내고 찐 금고 오픈
         conn = sqlite3.connect(REAL_DB_PATH)
         cursor = conn.cursor()
         is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
@@ -114,10 +112,8 @@ def query_sqlite_logs(question: str) -> list:
 
 
 def generate_simulated_response(question: str, rows: list) -> str:
-    """장부 데이터를 기반으로 오차 없는 정확한 숏폼 정답을 바인딩합니다."""
+    """외부 야바위 모듈 의존성을 파괴하고, 내부에서 찐 금고 쿼리를 다이렉트로 때려박습니다."""
     from backend.llm.utils import parse_relative_datetime, postprocess_noun_ending
-    from backend.llm.stats_db import get_error_log_count, get_period_usage_stats
-    import sqlite3
     import datetime as dt
 
     try:
@@ -140,24 +136,51 @@ def generate_simulated_response(question: str, rows: list) -> str:
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
     is_total_log_query = any(k in query_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-    # 1순위: 순수 시간 및 토큰 누적 통계 분기
+    # 1순위: 사용 시간 및 토큰 (내부 다이렉트 집계로 야바위 원천 차단)
     if is_time_token_query:
-        usage = get_period_usage_stats(start_time, end_time)
-        total_hours = usage["total_hours"]
-        total_tokens = usage["total_tokens"]
+        conn = sqlite3.connect(REAL_DB_PATH)
+        try:
+            cursor = conn.cursor()
+            # 토큰 합산 쿼리 직접 가동
+            cursor.execute("SELECT raw_message FROM ide_activity_logs WHERE timestamp BETWEEN ? AND ?", (start_time, end_time))
+            token_rows = cursor.fetchall()
+            total_tokens = 0
+            for r in token_rows:
+                msg = r[0] or ""
+                p_match = re.search(r'"prompt_tokens"\s*:\s*(\d+)', msg)
+                c_match = re.search(r'"completion_tokens"\s*:\s*(\d+)', msg)
+                if p_match: total_tokens += int(p_match.group(1))
+                if c_match: total_tokens += int(c_match.group(1))
+            
+            # 대략적인 시간 추산 (로그가 찍힌 첫 시간과 마지막 시간 차이 계산)
+            cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM ide_activity_logs WHERE timestamp BETWEEN ? AND ?", (start_time, end_time))
+            min_t, max_t = cursor.fetchone()
+            total_hours = 0.0
+            if min_t and max_t:
+                try:
+                    d1 = dt.datetime.strptime(min_t.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                    d2 = dt.datetime.strptime(max_t.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                    total_hours = round((d2 - d1).total_seconds() / 3600.0, 1)
+                except: pass
+        finally:
+            conn.close()
         ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
         return postprocess_noun_ending(ans)
 
-    # 2순위: 에러 명시 질의 분기
+    # 2순위: 에러 명시 질의 분기 (stats_db 버리고 직접 쿼리 수행)
     elif is_err_log_query:
-        err_count = get_error_log_count(start_time, end_time)
+        conn = sqlite3.connect(REAL_DB_PATH)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE timestamp BETWEEN ? AND ? AND event_type = 'ERROR'", (start_time, end_time))
+            err_count = cursor.fetchone()[0] or 0
+        finally:
+            conn.close()
         ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 발생한 에러 로그는 총 {err_count}개임."
         return postprocess_noun_ending(ans)
 
     # 3순위: 개수/수량/전체 장부 질의 분기
     elif is_total_log_query:
-        import sqlite3
-        # [교정] 내부 카운트 연산도 찐 금고 경로에서 집계하도록 강제 매핑
         conn = sqlite3.connect(REAL_DB_PATH)
         try:
             cursor = conn.cursor()

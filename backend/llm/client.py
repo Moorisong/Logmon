@@ -15,6 +15,9 @@ except ValueError:
 
 MODEL_NAME = "llama3.2:1b"
 
+# [교정] 검증된 도커 내부의 찐 데이터베이스 금고 절대 경로로 통일
+REAL_DB_PATH = "/app/data/logmon.db"
+
 async def generate_completion(prompt: str) -> str:
     """Ollama 전송 전 핵심 집계 쿼리 여부를 선제 인터셉트합니다."""
     context, question = parse_prompt(prompt)
@@ -30,7 +33,7 @@ async def generate_completion(prompt: str) -> str:
         is_time_token_query = any(k in q_lower for k in IS_TIME_TOKEN_KEYWORDS)
         is_total_log_query = any(k in q_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-        # [교정] 오매핑 납치 차단을 위해 라우팅 우선순위를 철저하게 재정렬
+        # 라우팅 우선순위 철저 정렬 (시간 -> 에러 -> 전체개수)
         if is_time_token_query:
             logger.info("[인터셉터] 1순위: 시간 및 토큰 누적 통계 분기 가동")
             rows = query_sqlite_logs(question)
@@ -84,14 +87,14 @@ def parse_prompt(prompt: str) -> tuple:
 
 
 def query_sqlite_logs(question: str) -> list:
-    from backend.db.connection import get_connection
-    conn = get_connection()
+    import sqlite3
     try:
+        # [교정] 가짜 깡통 경로 걷어내고 찐 금고 오픈
+        conn = sqlite3.connect(REAL_DB_PATH)
         cursor = conn.cursor()
         is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
         query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs"
         conditions = []
-        params = []
         
         if is_today_query:
             conditions.append("date(timestamp) = date('now', 'localtime')")
@@ -100,19 +103,21 @@ def query_sqlite_logs(question: str) -> list:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY timestamp DESC LIMIT 10"
         
-        cursor.execute(query, params)
+        cursor.execute(query)
         return cursor.fetchall()
     except Exception as e:
         logger.error(f"SQLite 조회 에러: {e}")
         return []
     finally:
-        conn.close()
+        try: conn.close()
+        except: pass
 
 
 def generate_simulated_response(question: str, rows: list) -> str:
     """장부 데이터를 기반으로 오차 없는 정확한 숏폼 정답을 바인딩합니다."""
     from backend.llm.utils import parse_relative_datetime, postprocess_noun_ending
     from backend.llm.stats_db import get_error_log_count, get_period_usage_stats
+    import sqlite3
     import datetime as dt
 
     try:
@@ -135,7 +140,6 @@ def generate_simulated_response(question: str, rows: list) -> str:
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
     is_total_log_query = any(k in query_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-    # 응답 사출부도 인터셉터와 1:1 싱크로율로 우선순위 완전 정렬
     # 1순위: 순수 시간 및 토큰 누적 통계 분기
     if is_time_token_query:
         usage = get_period_usage_stats(start_time, end_time)
@@ -152,8 +156,9 @@ def generate_simulated_response(question: str, rows: list) -> str:
 
     # 3순위: 개수/수량/전체 장부 질의 분기
     elif is_total_log_query:
-        from backend.db.connection import get_connection
-        conn = get_connection()
+        import sqlite3
+        # [교정] 내부 카운트 연산도 찐 금고 경로에서 집계하도록 강제 매핑
+        conn = sqlite3.connect(REAL_DB_PATH)
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE timestamp BETWEEN ? AND ? AND task_name != 'STATISTICS'", (start_time, end_time))

@@ -84,10 +84,30 @@ async def generate_completion(prompt: str) -> str:
         return ERROR_FALLBACK_MESSAGE
 
 
-def parse_prompt(prompt: str):
+def parse_prompt(prompt: str) -> tuple:
+    """
+    프롬프트에서 유저의 핵심 질문 문자열만 추출합니다.
+    RAG_PROMPT_TEMPLATE / COUNT_PROMPT_TEMPLATE 의 실제 마커([User Query])와
+    레거시 마커([사용자 질문]) 두 가지 포맷을 모두 지원합니다.
+    추출 실패 시 ("", "") 반환 — 절대 전체 prompt를 반환하지 않습니다.
+    """
     context = ""
     question = ""
-    if "[과거 로그 컨텍스트]" in prompt and "[사용자 질문]" in prompt:
+
+    # ── 포맷 A: 실제 프로덕션 템플릿 마커 ([Context] / [User Query]) ──
+    if "[User Query]" in prompt:
+        try:
+            after_query = prompt.split("[User Query]")[1]
+            # <end_of_turn> 또는 줄 끝까지 추출
+            q_raw = after_query.split("<end_of_turn>")[0].strip()
+            question = q_raw.strip()
+            if "[Context]" in prompt:
+                context = prompt.split("[Context]")[1].split("[User Query]")[0].strip()
+        except Exception:
+            pass
+
+    # ── 포맷 B: 레거시 마커 ([과거 로그 컨텍스트] / [사용자 질문]) ──
+    if not question and "[과거 로그 컨텍스트]" in prompt and "[사용자 질문]" in prompt:
         try:
             parts = prompt.split("[과거 로그 컨텍스트]")
             if len(parts) > 1:
@@ -98,7 +118,9 @@ def parse_prompt(prompt: str):
                     question = sub_q[0].strip()
         except Exception:
             pass
+
     return context, question
+
 
 
 def query_sqlite_logs(question: str) -> list:

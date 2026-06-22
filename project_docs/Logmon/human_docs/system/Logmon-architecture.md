@@ -53,7 +53,7 @@
 | 호스트 경로 | 컨테이너 내부 경로 | 매핑 컨테이너 | 설명 |
 | :--- | :--- | :--- | :--- |
 | `/home/ksh/logmon/data/db` | `/app/data` | `logmon-backend` | SQLite 3 (`logmon.db`) DB 파일 저장 폴더 |
-| `/home/ksh/logmon/data/chroma` | `/app/chroma_data` | `logmon-backend` | Chroma DB 벡터 데이터 영속화 폴더 |
+| `/home/ksh/logmon/data/chroma` | `/app/data/chroma` | `logmon-backend` | Chroma DB 벡터 데이터 영속화 폴더 |
 | `/home/ksh/logmon/data/ollama` | `/root/.ollama` | `logmon-ollama` | Gemma2 및 bge 임베딩 모델 가중치 파일 보존 폴더 |
 
 ---

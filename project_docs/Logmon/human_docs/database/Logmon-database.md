@@ -48,7 +48,7 @@ CREATE INDEX idx_activity_event_type ON ide_activity_logs(event_type);
 
 * **임베딩 모델**: `nomic-embed-text` (Ollama 기반 초경량·고성능 모델)
 * **목적**: 과거 개발 로그, 질문 및 해결 과정 텍스트에 대한 시맨틱 검색(Semantic Search) 지원.
-* **저장 영속성**: 호스트 경로 `/home/ksh/logmon_data/chroma` 마운트를 통해 보존.
+* **저장 영속성**: 호스트 경로 `/home/ksh/logmon/data/chroma` 마운트를 통해 컨테이너 내부 `/app/data/chroma`에 보존.
 
 ### ⚙️ 데이터 쪼개기 및 임베딩 처리 파이프라인
 

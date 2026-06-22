@@ -37,26 +37,27 @@ agent/
 ```python
 import os
 
-CHECKPOINT_FILE = ".logmon_checkpoint"
+CHECKPOINT_FILE = os.path.expanduser("~/.logmon_checkpoint")
 
 def get_last_offset(filepath: str) -> int:
-    if not os.path.exists(CHECKPOINT_FILE):
-        return 0
-    # 체크포인트 파일에서 특정 로그 파일 경로에 매핑된 바이트 오프셋 반환
-    # 예: "filepath:offset" 또는 JSON 구조
-    return parse_checkpoint_offset(CHECKPOINT_FILE, filepath)
+    # 홈 디렉터리에 위치한 .logmon_checkpoint JSON 파일에서 오프셋 획득
+    data = _load_checkpoint_data()
+    return data.get(filepath, 0)
 
 def update_offset(filepath: str, offset: int):
     # 전송이 성공한 경우에만 호출되어 체크포인트를 갱신함
-    write_checkpoint_offset(CHECKPOINT_FILE, filepath, offset)
+    data = _load_checkpoint_data()
+    data[filepath] = offset
+    _save_checkpoint_data(data)
 ```
 
 #### 3단계: 부분 로그 리딩 및 전송 (`sender.py`)
 1. 에이전트 기동 시 타깃 파일의 크기(size)를 구하고, 체크포인트 오프셋 위치를 비교합니다.
-2. 오프셋 위치로 `seek()` 이동한 뒤, 추가된 신규 데이터만 읽어 메모리에 올립니다.
-3. 읽어낸 로그 페이로드를 담아 `sender.py` 모듈을 통해 `POST /api/logmon/upload`로 발송합니다.
+2. 오프셋 위치로 `seek()` 이동한 뒤, 추가된 신규 데이터만 읽어 메모리에 올립니다. 이 때 대용량 파일 전송 중 HTTP 413 Payload Too Large 에러를 방지하고 순차 전송을 보장하기 위해 최대 500KB 단위로 분할하여(Chunking) 읽어옵니다.
+3. 읽어낸 로그 페이로드를 담아 `sender.py` 모듈을 통해 API 서버로 발송합니다.
+   * **엔드포인트 동적 해결**: `backend_url` 주소가 `/api/logmon`으로 끝날 경우에는 `{backend_url}/upload`, 그렇지 않을 경우에는 `{backend_url}/api/logmon/upload`로 동적 접미사 판별을 적용합니다.
 4. 이때 헤더에 `X-LogMon-API-Key`를 필수 주입합니다.
-5. **예외 및 멱등성 사수**: HTTP 전송 실패 및 타임아웃 발생 시 오프셋을 갱신하는 `update_offset` 함수를 **절대로 호출하지 않고 비정상 종료(또는 예외 발생)** 처리하여, 다음 5분 루프 기동 시 해당 오프셋부터 재스캔을 시도하게 만듭니다.
+5. **예외 및 멱등성 사수**: HTTP 전송 실패 및 타임아웃 발생 시 오프셋을 갱신하는 `update_offset` 함수를 **절대로 호출하지 않고 전송 루프를 탈출(break)** 처리하여, 다음 5분 루프 기동 시 해당 오프셋부터 재스캔을 시도하게 만듭니다.
 
 ---
 

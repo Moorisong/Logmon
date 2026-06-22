@@ -56,8 +56,9 @@ CREATE TABLE IF NOT EXISTS ide_activity_logs (
 
 #### 3단계: Chroma DB 데이터 분할 및 적재 (`chroma_handler.py`)
 * `raw_message` 등의 텍스트를 청킹하기 위해 Chunk Size 800 / Chunk Overlap 100 자 구조의 문자열 분할 유틸리티를 적용합니다.
-* 쪼개진 텍스트 청크를 `logmon-ollama` 서비스의 임베딩 엔드포인트를 호출하여 벡터로 수신하고, 이를 Chroma DB 컬렉션에 적재합니다.
+* 쪼개진 텍스트 청크를 `logmon-ollama` 서비스의 임베딩 엔드포인트를 호출하여 벡터로 수신하고, 이를 Chroma DB 컬렉션에 적재합니다. 이 때 Chroma DB 디렉토리는 환경 변수 `LOGMON_CHROMA_DIR`(기본값 `/app/data/chroma`)을 바탕으로 생성 및 로드됩니다.
 * **메타데이터**: 쿼리 최적화를 위해 `id`(SQLite의 레코드 ID)와 `user_key`를 반드시 메타데이터 객체에 임베딩하여 보존하세요.
+* **용량 제한 및 FIFO 클리닝**: SQLite와 Chroma DB 디스크 사용량이 합산 500MB를 넘지 않도록, 백그라운드 태스크에서 주기적으로 7일 경과 TTL 로그 삭제 및 FIFO(오래된 로그 100~1000건 단위 삭제) 클리닝이 진행되며, `VACUUM`을 통해 물리적 빈 공간을 디스크로 즉시 환수합니다.
 
 ---
 

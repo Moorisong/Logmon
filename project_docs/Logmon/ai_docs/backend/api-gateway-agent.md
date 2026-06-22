@@ -32,30 +32,25 @@ backend/
 
 ### 🛠️ 개발 단계 (Step-by-Step 상세 로직)
 
-#### 1단계: 정적 디렉터리 바인딩
-* `main.py` 파일 내부에 FastAPI 내장 `StaticFiles` 모듈을 연동하여 `/api/logmon/static` 경로로 디렉터리를 노출시킵니다.
+#### 1단계: 정적 디렉터리 바인딩 및 라우팅
+* `main.py` 파일 내부에 FastAPI 내장 `StaticFiles` 모듈을 연동하여 `/static` 경로로 디렉터리를 노출시킵니다.
 ```python
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-
-app = FastAPI(docs_url="/api/logmon/docs", openapi_url="/api/logmon/openapi.json")
-
-# 정적 파일 서빙 등록
-app.mount("/api/logmon/static", StaticFiles(directory="static"), name="static")
+# main.py에서 내부 static 폴더 마운트
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 ```
+* 실제 배포 스크립트 및 에이전트용 파일 다운로드는 `api/routes.py` 내의 `@router.get("/static/{file_name}")` 라우트 엔드포인트를 통해 동적으로 유저 편의 기능 주입(API Key와 도메인 주소 등)을 마쳐 서빙됩니다.
 
-#### 2단계: API Key 보안 헤더 필터 추가
-* `api/dependencies.py` 파일 내에서 API Key 검증 데코레이터를 구현합니다.
+#### 2단계: API Key 보안 헤더 필터 추가 (`api/dependencies.py`)
+* `api/dependencies.py` 파일 내에서 `ALLOWED_API_KEYS` 환경 변수 값을 쉼표(,) 기준으로 파싱하여 요청 헤더의 `X-LogMon-API-Key`가 허용 목록에 존재하는지 체크합니다.
 ```python
 from fastapi import Header, HTTPException, status
 
 async def verify_api_key(x_logmon_api_key: str = Header(..., alias="X-LogMon-API-Key")):
-    # TODO: SQLite DB를 조회하여 해당 API Key가 유효한지 확인하는 로직 수행
-    is_valid = check_db_valid_key(x_logmon_api_key) 
-    if not is_valid:
+    allowed_keys = get_allowed_api_keys() # ALLOWED_API_KEYS 환경 변수 로드
+    if not allowed_keys or x_logmon_api_key not in allowed_keys:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing X-LogMon-API-Key"
+            detail="Invalid X-LogMon-API-Key"
         )
     return x_logmon_api_key
 ```

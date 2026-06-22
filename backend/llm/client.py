@@ -135,63 +135,57 @@ def query_sqlite_logs(question: str) -> list:
 
 def generate_simulated_response(question: str, rows: list) -> str:
     from backend.llm.utils import parse_relative_datetime, postprocess_noun_ending
-    from backend.db.connection import get_connection
+    from backend.llm.stats_db import get_error_log_count, get_period_usage_stats
     import datetime as dt
-    
+
     # 1. 자연어 기간 파서 연동
     try:
         start_time, end_time = parse_relative_datetime(question)
     except Exception:
         start_time, end_time = None, None
-        
+
     if not start_time or not end_time:
         # 기본값: 오늘 하루
         now = dt.datetime.now()
         start_time = now.strftime("%Y-%m-%d 00:00:00")
         end_time = now.strftime("%Y-%m-%d %H:%M:%S")
-        
+
     query_lower = question.lower()
-    
-    # 2. 질문 의도 분석 및 SQLite 쿼리 분기
-    is_time_token_query = any(k in query_lower for k in ["시간", "토큰", "사용량", "duration", "token"])
-    is_err_count_query = any(k in query_lower for k in ["개수", "몇 개", "몇개", "몇 건", "몇건", "건수", "수량", "총합", "통계", "집계", "count", "how many"])
-    
-    if is_time_token_query or is_err_count_query:
-        conn = get_connection()
-        try:
-            cursor = conn.cursor()
-            if is_time_token_query:
-                # 시간/토큰 집계 쿼리
-                cursor.execute("""
-                    SELECT SUM(duration_seconds), SUM(input_tokens + output_tokens)
-                    FROM ide_activity_logs
-                    WHERE timestamp BETWEEN ? AND ? AND task_name != 'STATISTICS'
-                """, (start_time, end_time))
-                row = cursor.fetchone()
-                total_sec = row[0] or 0 if row else 0
-                total_tokens = row[1] or 0 if row else 0
-                total_hours = round(total_sec / 3600.0, 1)
-                
-                ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
-                return postprocess_noun_ending(ans)
-            else:
-                # 로그/에러 개수 집계 쿼리
-                cursor.execute("""
-                    SELECT COUNT(id)
-                    FROM ide_activity_logs
-                    WHERE timestamp BETWEEN ? AND ? 
-                      AND event_type IN ('ERROR', 'CRITICAL') 
-                      AND task_name != 'STATISTICS'
-                """, (start_time, end_time))
-                row = cursor.fetchone()
-                err_count = row[0] or 0 if row else 0
-                
-                ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 발생한 에러 로그는 총 {err_count}개임."
-                return postprocess_noun_ending(ans)
-        except Exception as e:
-            logger.error(f"Fallback SQLite 직접 집계 중 에러 발생: {e}")
-        finally:
-            conn.close()
+
+    # 2. 질문 의도 분기 — 로그/에러 분기 (1순위) vs 시간/토큰 분기 (2순위) vs 일반 로그 분기 (기본)
+    # ─────────────────────────────────────────────────────────────────────────────
+    # [로그/에러 분기] 유저가 에러·로그 건수나 정리를 물을 때
+    IS_ERR_LOG_KEYWORDS = [
+        "로그", "에러", "오류", "정리", "error", "개수", "몇 개", "몇개",
+        "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
+    ]
+    # [시간/토큰 분기] 유저가 사용 시간·토큰·사용량을 물을 때
+    IS_TIME_TOKEN_KEYWORDS = [
+        "시간", "토큰", "사용량", "사용시간", "duration", "token",
+    ]
+
+    is_err_log_query = any(k in query_lower for k in IS_ERR_LOG_KEYWORDS)
+    is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
+
+    if is_err_log_query:
+        # ── [로그/에러 분기] stats_db.get_error_log_count 전용 함수 호출 ──
+        err_count = get_error_log_count(start_time, end_time)
+        ans = (
+            f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) "
+            f"내 발생한 에러 로그는 총 {err_count}개임."
+        )
+        return postprocess_noun_ending(ans)
+
+    elif is_time_token_query:
+        # ── [시간/토큰 분기] stats_db.get_period_usage_stats 전용 함수 호출 ──
+        usage = get_period_usage_stats(start_time, end_time)
+        total_hours = usage["total_hours"]
+        total_tokens = usage["total_tokens"]
+        ans = (
+            f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) "
+            f"누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
+        )
+        return postprocess_noun_ending(ans)
 
     if not rows:
         return "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."

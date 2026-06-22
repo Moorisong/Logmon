@@ -145,6 +145,87 @@ def upsert_daily_statistics(user_key: str) -> None:
     finally:
         conn.close()
 
+def get_error_log_count(start_time: str, end_time: str) -> int:
+    """
+    지정된 기간(start_time ~ end_time) 사이에 발생한
+    ERROR/CRITICAL 이벤트 로그 건수를 COUNT(*) 쿼리로 반환합니다.
+    STATISTICS 집계 레코드는 제외하고 카운트합니다.
+
+    Args:
+        start_time: 조회 시작 시각 문자열 (예: "2026-06-20 00:00:00")
+        end_time: 조회 종료 시각 문자열 (예: "2026-06-22 11:00:00")
+
+    Returns:
+        해당 기간의 에러 로그 총 건수 (정수)
+    """
+    from backend.db.connection import get_connection
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM ide_activity_logs
+            WHERE timestamp BETWEEN ? AND ?
+              AND event_type IN ('ERROR', 'CRITICAL')
+              AND task_name != 'STATISTICS'
+            """,
+            (start_time, end_time),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else 0
+    except Exception as e:
+        logger.error(f"에러 로그 개수 쿼리 중 오류 발생: {e}")
+        return 0
+    finally:
+        conn.close()
+
+
+def get_period_usage_stats(start_time: str, end_time: str) -> dict:
+    """
+    지정된 기간(start_time ~ end_time) 사이의
+    누적 사용 시간(초)과 AI 토큰량을 SUM 쿼리로 반환합니다.
+    STATISTICS 집계 레코드는 제외하고 집계합니다.
+
+    Args:
+        start_time: 조회 시작 시각 문자열 (예: "2026-06-20 00:00:00")
+        end_time: 조회 종료 시각 문자열 (예: "2026-06-22 11:00:00")
+
+    Returns:
+        {"total_hours": float, "total_tokens": int} 딕셔너리
+    """
+    from backend.db.connection import get_connection
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        # COALESCE로 SUM 결과 NULL → 0 치환: 지정 기간에 로그가 없을 때 TypeError 완전 차단
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(duration_seconds), 0),
+                   COALESCE(SUM(input_tokens + output_tokens), 0)
+            FROM ide_activity_logs
+            WHERE timestamp BETWEEN ? AND ?
+              AND task_name != 'STATISTICS'
+            """,
+            (start_time, end_time),
+        )
+        row = cursor.fetchone()
+        # Python 단 이중 방어: DB COALESCE 이후에도 None이 흘러올 경우를 대비
+        total_sec = row[0] if (row and row[0] is not None) else 0
+        total_tokens = row[1] if (row and row[1] is not None) else 0
+        return {
+            "total_hours": round(total_sec / 3600.0, 1),
+            "total_tokens": int(total_tokens),
+        }
+    except Exception as e:
+        logger.error(f"기간별 사용량 통계 쿼리 중 오류 발생: {e}")
+        return {"total_hours": 0.0, "total_tokens": 0}
+    finally:
+        conn.close()
+
+
 def get_latest_statistics_data(user_key: str = None) -> dict:
     """
     SQLite 데이터베이스에서 가장 최신 STATISTICS 로그 레코드를 조회하여

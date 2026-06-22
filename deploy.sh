@@ -10,7 +10,7 @@
 # ==============================================================================
 
 # --- 사용자 설정 영역 (홈서버 환경에 맞춰 수정하세요) ---
-SSH_USER="ksh"                           # SSH 사용자 이름
+SSH_USER="ksh"                            # SSH 사용자 이름
 SSH_HOST_INT="192.168.0.6"               # 홈서버 내부 IP
 SSH_HOST_EXT="125.190.25.48"             # 홈서버 외부 공인 IP
 SSH_PORT="8193"                          # SSH 포트
@@ -91,7 +91,7 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   set -e
   echo -e "\n=== 원격 서버 작업 시작 ==="
   
-  # 프로젝트 폴더 탐색 및 이동 (리눅스 경로 후보군 동적 스캔)
+  # 프로젝트 폴더 탐색 및 이동
   TARGET_DIR="${REMOTE_PROJECT_DIR}"
   if [ ! -d "\$TARGET_DIR" ]; then
     for alt in "/home/${SSH_USER}/logmon" "/home/${SSH_USER}/Logmon" "/home/${SSH_USER}/Desktop/Project/Logmon" "/home/${SSH_USER}/Project/Logmon" "\$HOME/logmon" "\$HOME/Logmon"; do
@@ -103,68 +103,58 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   fi
 
   if [ ! -d "\$TARGET_DIR" ]; then
-    echo -e "\e[31m[오류] 원격 프로젝트 경로를 찾을 수 없습니다. (시도 경로: ${REMOTE_PROJECT_DIR} 및 홈 디렉토리 후보군)\e[0m"
+    echo -e "\e[31m[오류] 원격 프로젝트 경로를 찾을 수 없습니다.\e[0m"
     exit 1
   fi
 
   echo -e "배포 대상 원격 경로: \e[32m\$TARGET_DIR\e[0m"
   cd "\$TARGET_DIR"
   
-  # Ollama 11434 포트 헬스체크 및 좀비 프로세스 자동 재기동
-  echo -e "\e[34m[원격] Ollama 헬스체크 및 포트 클리닝 검사 중...\e[0m"
+  # 1. 최신 소스 pull 선행 (도커 컴포즈 리스타트 명령어 구동을 위해)
+  echo -e "\e[34m[원격] Git Pull 실행 중... (브랜치: ${CURRENT_BRANCH})\e[0m"
+  git fetch origin
+  git checkout "${CURRENT_BRANCH}"
+  
+  if [ -f "backend/db/logmon.db" ] && ! git ls-files --error-unmatch backend/db/logmon.db >/dev/null 2>&1; then
+    mv backend/db/logmon.db "backend/db/logmon.db.bak_\$(date +%Y%m%d_%H%M%S)" || true
+  fi
+  git pull origin "${CURRENT_BRANCH}"
+
+  # Ollama 11434 포트 헬스체크 및 도커 컨테이너 강제 심폐소생술
+  echo -e "\e[34m[원격] Ollama 헬스체크 및 도커 컨테이너 검사 중...\e[0m"
   PORT_ACTIVE=false
   if nc -z localhost 11434 2>/dev/null; then
     PORT_ACTIVE=true
   fi
 
   API_RESPONSE=0
-  if [ "$PORT_ACTIVE" = true ]; then
+  if [ "\$PORT_ACTIVE" = true ]; then
     API_RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags || echo "000")
   fi
 
-  if [ "$PORT_ACTIVE" = false ] || [ "$API_RESPONSE" != "200" ]; then
-    echo -e "\e[33m[원격] [경고] Ollama가 비정상 상태입니다 (포트 활성: \$PORT_ACTIVE, API 응답 코드: \$API_RESPONSE). 좀비 프로세스 청소 및 재기동을 시도합니다.\e[0m"
-    if [ "\$PORT_ACTIVE" = true ]; then
-      echo -e "\e[31m[원격] 11434 포트 좀비 프로세스 강제 킬 실행...\e[0m"
-      lsof -t -i:11434 | xargs kill -9 2>/dev/null || true
-      sleep 2
-    fi
-    echo -e "\e[34m[원격] Ollama 서비스 재기동 시작...\e[0m"
-    if systemctl is-active --quiet ollama 2>/dev/null; then
-      sudo systemctl restart ollama 2>/dev/null || (nohup ollama serve > /dev/null 2>&1 &)
-    else
-      sudo systemctl start ollama 2>/dev/null || (nohup ollama serve > /dev/null 2>&1 &)
-    fi
-    echo -e "\e[34m[원격] Ollama 200 OK 응답 대기 중...\e[0m"
-    for i in {1..10}; do
+  if [ "\$PORT_ACTIVE" = false ] || [ "\$API_RESPONSE" != "200" ]; then
+    echo -e "\e[33m[원격] [경고] 도커 내부 Ollama 서비스 찐빠 감지 (포트: \$PORT_ACTIVE, 응답: \$API_RESPONSE). 컨테이너 강제 리스타트 슛!\e[0m"
+    
+    # 호스트 systemctl 뇌절 제거, 실제 도커 컴포즈 내 Ollama 서비스 타격
+    docker compose restart logmon-ollama 2>/dev/null || docker compose up -d logmon-ollama
+    
+    echo -e "\e[34m[원격] Ollama 컨테이너 200 OK 응답 대기 중 (최대 45초)... \e[0m"
+    for i in {1..15}; do
       HEALTH_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags || echo "000")
       if [ "\$HEALTH_CODE" = "200" ]; then
-        echo -e "\e[32m[원격] Ollama 헬스체크 성공! (API 응답 코드: 200)\e[0m"
+        echo -e "\e[32m[원격] Ollama 컨테이너 헬스체크 성공! (API 응답 코드: 200)\e[0m"
         break
       fi
-      sleep 1
+      echo -e "\e[33m[원격] 컨테이너 안정화 대기 중 (\${i}/15)... \e[0m"
+      sleep 3
     done
   else
-    echo -e "\e[32m[원격] Ollama 서비스 정상 동작 중 (API 응답 코드: 200)\e[0m"
+    echo -e "\e[32m[원격] Ollama 컨테이너 정상 가동 중 (API 응답 코드: 200)\e[0m"
   fi
-
-  # 2. 최신 소스 pull
-  echo -e "\e[34m[원격] Git Pull 실행 중... (브랜치: ${CURRENT_BRANCH})\e[0m"
-  git fetch origin
-  git checkout "${CURRENT_BRANCH}"
-  
-  # untracked 파일 충돌 방지를 위한 백업 가드 추가
-  if [ -f "backend/db/logmon.db" ] && ! git ls-files --error-unmatch backend/db/logmon.db >/dev/null 2>&1; then
-    echo -e "\e[33m[원격] 추적되지 않는 backend/db/logmon.db 파일이 감지되어 백업을 수행합니다.\e[0m"
-    mv backend/db/logmon.db "backend/db/logmon.db.bak_\$(date +%Y%m%d_%H%M%S)" || true
-  fi
-
-  git pull origin "${CURRENT_BRANCH}"
   
   # 3. Docker Compose 빌드 및 실행
-  echo -e "\e[34m[원격] Docker Compose 빌드 및 무중단 재빌드 시작...\e[0m"
+  echo -e "\e[34m[원격] Docker Compose 백엔드/UI 빌드 및 무중단 재빌드 시작...\e[0m"
   if [ -n "$NO_CACHE_FLAG" ]; then
-    echo -e "\e[33m[원격] 빌드 캐시를 사용하지 않고 재빌드 진행 중 (--no-cache)...\e[0m"
     docker compose build --no-cache && docker compose up -d
   else
     docker compose up -d --build

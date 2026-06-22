@@ -16,8 +16,11 @@ from backend.llm.rag_engine import ask_rag_agent
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
+    from backend.llm.memory import _conversation_memory
+    _conversation_memory.clear()
     init_db()
     yield
+    _conversation_memory.clear()
     if os.path.exists(os.environ["LOGMON_DB_DIR"]):
         import shutil
         shutil.rmtree(os.environ["LOGMON_DB_DIR"], ignore_errors=True)
@@ -56,10 +59,11 @@ def test_guardrail_blocking_non_tech():
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
 @patch('backend.llm.rag_engine.rerank_documents')
-@patch('backend.llm.rag_engine.logger.warning')
-async def test_rag_token_ceiling_and_dropping_guardrails(mock_warn, mock_rerank, mock_generate, mock_query):
-    """6. 1,800 토큰 초과 시 청크를 드롭하고 [WARN] 로그를 기록하는지 검증"""
-    large_chunk = "A" * 2500  # 약 1000 토큰
+@patch('backend.llm.utils.logger')
+async def test_rag_token_ceiling_and_dropping_guardrails(mock_logger, mock_rerank, mock_generate, mock_query):
+    """6. 1,800 토큰 초과 시 청크 동적 압축 및 [WARN] 로그를 기록하는지 검증"""
+    mock_logger.warning.reset_mock()
+    large_chunk = "RawMessage: " + ("A" * 2500)  # 약 1000 토큰
     mock_query.return_value = [[
         f"[2026-06-22 10:00:00] {large_chunk}",
         f"[2026-06-22 10:05:00] {large_chunk}",
@@ -70,9 +74,9 @@ async def test_rag_token_ceiling_and_dropping_guardrails(mock_warn, mock_rerank,
     
     answer = await ask_rag_agent("경고로그 분석해줘", "test_user_key")
     
-    # 1800 초과로 드롭되어 warning이 기록되고
-    assert mock_warn.called
-    any_warn_call = any("[WARN] Token limit exceeded. Dropping oldest chunk..." in call[0][0] for call in mock_warn.call_args_list)
+    # 1800 초과로 warning이 기록되고
+    assert mock_logger.warning.called
+    any_warn_call = any("[WARN] Token limit exceeded" in call[0][0] and "Truncating RawMessage" in call[0][0] for call in mock_logger.warning.call_args_list)
     assert any_warn_call
     # 어미 후처리가 되어 명사형으로 출력되었는지 검증
     assert answer == "처리 완료함."
@@ -81,10 +85,11 @@ async def test_rag_token_ceiling_and_dropping_guardrails(mock_warn, mock_rerank,
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
 @patch('backend.llm.rag_engine.rerank_documents')
-@patch('backend.llm.rag_engine.logger.warning')
-async def test_rag_token_ceiling_no_drop(mock_warn, mock_rerank, mock_generate, mock_query):
+@patch('backend.llm.utils.logger')
+async def test_rag_token_ceiling_no_drop(mock_logger, mock_rerank, mock_generate, mock_query):
     """7. 1,800 토큰 이하일 때는 드롭 없이 전체 컨텍스트가 유지되는지 검증"""
-    small_chunk = "A" * 100  # 아주 작은 크기
+    mock_logger.warning.reset_mock()
+    small_chunk = "RawMessage: " + ("A" * 100)  # 아주 작은 크기
     mock_query.return_value = [[
         f"[2026-06-22 10:00:00] {small_chunk}",
     ]]
@@ -94,7 +99,7 @@ async def test_rag_token_ceiling_no_drop(mock_warn, mock_rerank, mock_generate, 
     await ask_rag_agent("에러 검색해줘", "test_user_key")
     
     # 드롭 경고가 호출되지 않아야 함
-    assert not mock_warn.called
+    assert not mock_logger.warning.called
 
 @pytest.mark.asyncio
 async def test_rag_empty_context_handling_guardrails():

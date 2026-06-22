@@ -14,7 +14,7 @@ try:
 except ValueError:
     OLLAMA_NUM_THREAD = 3
 
-MODEL_NAME = "gemma2:2b"
+MODEL_NAME = "llama3.2:1b"
 
 async def generate_completion(prompt: str) -> str:
     """
@@ -134,7 +134,7 @@ def query_sqlite_logs(question: str) -> list:
 
 def generate_simulated_response(question: str, rows: list) -> str:
     if not rows:
-        return "안녕하세요! 현재 로컬 Ollama(gemma2:2b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."
+        return "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."
         
     errors = []
     warnings = []
@@ -187,7 +187,7 @@ def generate_simulated_response(question: str, rows: list) -> str:
         elif warnings:
             return f"백업 장부(SQLite) 분석 결과, 해당 경고가 발생한 정확한 시간은 **[{warnings[0]['time']}]** 입니다."
             
-    response = "안녕하세요! 현재 로컬 Ollama(gemma2:2b) 서비스가 오프라인 상태이지만, 실제 저장된 로그 데이터를 분석하여 답변해 드려요.\n\n"
+    response = "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이지만, 실제 저장된 로그 데이터를 분석하여 답변해 드려요.\n\n"
     
     is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
     

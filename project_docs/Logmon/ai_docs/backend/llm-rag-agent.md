@@ -1,11 +1,11 @@
 # 🤖 llm-rag-agent.md - AI 개발 가이드
 
-이 문서는 Ollama 기반 로컬 LLM(Gemma 2 2B) 및 초경량 임베딩 모델(nomic-embed-text) 연동, Chroma DB 시맨틱 검색 결합 하이브리드 RAG 챗봇 엔진 구축을 위한 AI 에이전트용 설계 지침입니다.
+이 문서는 Ollama 기반 로컬 LLM(Llama 3.2 1B) 및 초경량 임베딩 모델(nomic-embed-text) 연동, Chroma DB 시맨틱 검색 결합 하이브리드 RAG 챗봇 엔진 구축을 위한 AI 에이전트용 설계 지침입니다.
 
 ---
 
 ## 📝 1. 연동 기획 명세 ([Logmon-architecture.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/system/Logmon-architecture.md), [Logmon-db-specification.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/database/Logmon-db-specification.md))
-* **로컬 LLM**: Gemma 2 2B (`gemma2:2b`)
+* **로컬 LLM**: Llama 3.2 1B (`llama3.2:1b`)
 * **임베딩**: `nomic-embed-text`
 * **엔드포인트**: `http://logmon-ollama:11434` 내부 연동 (외부 노출 불가)
 * **목적**: 과거의 사용 로그 및 질문/해결 맥락을 검색하여 개발자의 과거 컨텍스트 질의에 정확하게 응답.
@@ -22,7 +22,9 @@
 backend/
 └── llm/
     ├── client.py              # Ollama API 비동기 HTTP 요청 클라이언트
+    ├── stats_db.py            # SQLite 통계 정보 Upsert 위임 모듈 (300줄 한도 분리)
     ├── rag_engine.py          # Chroma DB 검색 결과 가공 및 컨텍스트 주입 엔진
+    ├── utils.py               # 상대 날짜 파서 및 동적 컨텍스트 압축 모듈
     └── prompt_templates.py    # RAG 질의 전용 최적화 프롬프트 템플릿
 ```
 
@@ -31,6 +33,7 @@ backend/
 #### 1단계: Ollama 비동기 통신 구현
 * 외부 라이브러리 의존성을 최소화하고 N95 CPU 블로킹을 막기 위해 `httpx` 비동기 라이브러리를 활용해 Ollama API 클라이언트를 제작합니다.
 * 임베딩 요청(`/api/embeddings`) 및 대답 생성 요청(`/api/generate` 또는 `/api/chat`)을 비동기로 구현합니다.
+* 타겟 모델을 `llama3.2:1b`로 지정하여 추론 병목을 최소화합니다.
 
 #### 2단계: RAG Retrieval 파이프라인
 1. 사용자의 자연어 입력("저번에 도커 컨테이너 포트 바인딩 에러 어떻게 해결했었지?")이 들어옵니다.
@@ -38,7 +41,8 @@ backend/
 3. 메타데이터(`user_key`)를 적용하여 타인의 로그 데이터가 조회되는 보안 누수를 철저히 차단합니다.
 4. **[개선] 메타데이터 프리필터링 고도화**:
    - **이벤트 타입 분류**: 로그 덤프(`LOG_DUMP`) 적재 시, 각 청크의 본문 텍스트 내 키워드를 분석하여 `[error]` 등의 키워드가 있으면 `event_type` 메타데이터를 `ERROR` 또는 `WARNING`으로 분류하여 저장합니다.
-   - **날짜 필터링**: 사용자 질문에 '오늘', 'today', '투데이' 등의 오늘 날짜 관련 검색 의도가 발견되면, KST 로컬 타임존 기준으로 오늘 00:00:00 이후에 등록된 로그만 검색할 수 있도록 `timestamp` 메타데이터 조건(`$gte`)을 필터링 쿼리에 복합(`$and`)으로 결합하여 쿼리합니다.
+   - **상대 날짜 및 기간 파싱 고도화**: "지난 N일 동안", "이틀 동안", "일주일 동안" 등의 상대적 표현을 `utils.py`에 격리 구현된 `parse_relative_datetime`을 통해 정밀하게 파싱하여 KST 기준 과거 시작 시각과 종료 시각을 안전하게 추론해 결합합니다.
+   - **날짜 필터링**: 사용자 질문에 오늘 날짜 관련 검색 의도가 발견되면, KST 로컬 타임존 기준으로 오늘 00:00:00 이후에 등록된 로그만 검색할 수 있도록 `timestamp` 메타데이터 조건을 필터링 쿼리에 복합(`$and`)으로 결합하여 쿼리합니다.
    - **[추가] 쿼리 파서(Query Parser) 및 후처리 필터링**: 질문 텍스트에서 시간대 범위('5분', '30분', '오전 10시', '새벽', '어제', '일주일'), 로그 레벨('Error', 'Warning', 'Critical'), 그리고 기술 키워드('Git', 'Connection', 'DB', 'Build' 등)를 정교하게 추출하여 `query_vectors` API의 후처리(Post-filtering) 필터링에 결합해 RAG 컨텍스트 무결성을 확보합니다.
    - **[추가] Pre-stage 가드레일 필터링**: Chroma DB 쿼리를 돌리기 전(Pre-stage) 단계에서, 질문 텍스트 내에 개발/로그 관련 핵심 기술 키워드(한글/영문)가 아예 포함되어 있지 않은 경우, 즉시 `"죄송합니다. 저는 Logmon 시스템 로그 및 장애 분석 전용 AI 에이전트입니다. 개발 및 로그 관련 질문에만 답변할 수 있습니다."`를 반환하도록 설계하여 엉뚱한 로그가 유입되어 발생하는 프롬프트 오류(안티그래비티 현상)를 선제 방어합니다.
    - **[격리] 검색 결과 없음 메시지 분리**: 가드레일은 기술 질문에만 동작하며, RAG 쿼리 및 파이썬 날짜 필터링을 거쳤으나 실제 검색 결과가 0건일 때는 `"최근 기록된 작업 로그가 존재하지 않습니다."`를 출력하도록 철저하게 격리하여 반환합니다.
@@ -54,7 +58,7 @@ backend/
 RAG_PROMPT_TEMPLATE = """<start_of_turn>user
 [System Information]
 - Current Server Time (KST): {current_date}
-- Target Model: Gemma 2 2B (Strict Short-form Output)
+- Target Model: Llama 3.2 1B (Strict Short-form Output)
 
 [Identity & Restrictions]
 - Role: Machine Log Summarizer.
@@ -103,39 +107,14 @@ Count the relevant logs in [Context] and list them EXACTLY in the format below.
 ---
 
 ## 🚨 3. 철벽 코드 컨벤션 및 제약 조건
-* **[300줄 분리 규칙]**: 프롬프트 문자열은 별도의 `prompt_templates.py`로 완벽 격리하여 소스 코드 로직과 섞여 300줄을 넘어가지 않도록 관리하세요.
+* **[프론트엔드 API 타임아웃 3분 정책]**: AI 백엔드와 로컬 LLM(Llama 3.2 1B)의 연산 지연 상황에서 유저가 정상적으로 대기할 수 있도록, 프론트엔드 API 클라이언트(`api_client.py`)의 챗 질의 타임아웃 제한을 **3분(180초)**으로 설정하여 유지합니다.
+* **[300줄 분리 규칙]**: 프롬프트 문자열은 별도의 `prompt_templates.py`로 완벽 격리하며, 일일 통계 적재 로직은 `stats_db.py`로 분리하여 모듈의 최대 줄 수가 300줄을 넘어가지 않도록 관리합니다.
 * **[CPU 부하 조절]**: Ollama 호출 시 `options` 파라미터에 `num_thread: 3` 등의 제한 값을 전달하여 N95의 4개 코어 중 1개 코어를 OS와 웹 UI용으로 양보할 수 있도록 세팅을 최적화하세요.
 * **[안전 장치 (Fallback)]**: 
-  - Ollama 서비스 다운, 리랭커 연산 실패, Chroma DB 장애 등 RAG 파이프라인 중 어떠한 예외 상황이 발생하더라도 "서비스가 쉬고 있어요"와 같은 고정 에러 메시지를 노출하여 크래시를 유발하는 대신, SQLite `get_connection` 시 Python `re` 모듈과 연동된 `REGEXP` 함수를 동적 등록하여 정규식 패턴 기반으로 로그를 긁어옵니다.
-  - 검색된 실제 로그들을 바탕으로 자연어 질문에 어울리는 동적 모의 답변(Simulated Response)을 무조건 출력하도록 구성하여 서비스 신뢰도를 보장합니다. 단, 테스트 환경(`LOGMON_ENV=test`)에서는 기존 안전망 메시지(`ERROR_FALLBACK_MESSAGE`)를 반환합니다.
-* **[Chroma DB 쿼리 방어]**: `where` 메타데이터 필터 포맷 등의 문제로 쿼리 크래시가 발생할 확률을 차단하기 위해, 쿼리 예외 발생 시 필터를 무시하고 전체 검색(Full search)을 실행한 후 파이썬 단에서 `user_key`와 `event_type`을 직접 솎아내는 Fallback 메커니즘을 적용합니다.
-* **[Fuzzy Matching 및 가드레일 키워드 확장]**: `DEV_KEYWORDS`를 IDE, 빌드, 인프라 통계 도메인 전체로 확장하며, 오타 및 유사어 방어를 위해 질문 텍스트 공백 제거 매칭 및 오타 정규식(예: '로드'->'로그')을 지원합니다.
+  - Ollama 서비스 다운, 리랭커 연산 실패, Chroma DB 장애 등 RAG 파이프라인 중 어떠한 예외 상황이 발생하더라도 SQLite fallback 메커니즘을 구동합니다.
 * **[디버깅 및 파이프라인 튜닝]**:
   - **컨텍스트 다이어트**: N95 CPU 타임아웃 방지를 위해 주입되는 로그 청크 리스트 최대 개수를 3개로 제약합니다.
   - **디버깅 로그 강화**: 날짜 추출 시 파싱된 기준 시간대 범위와 필터링 후 잔여 청크 개수를 로그에 명확히 남깁니다.
-  - **동적 토큰 조율 (Hard Ceiling)**: 최종 조립 프롬프트가 Gemma 2 2B의 한계치인 1,800 토큰 초과 위험이 있을 시 가장 오래된 로그 청크를 자동으로 Drop하고 재생성하는 조율 루프를 구동합니다. 이때 `[WARN] Token limit exceeded. Dropping oldest chunk...` 로그를 반드시 출력합니다.
-  - **[신규] 데이터 전처리 Key-Value 구조화**: Chroma DB 및 SQLite에 적재 전, 아래 템플릿 포맷으로 원본 메시지를 무조건 구조화하여 단일 청크 무결성을 확보합니다.
-    ```plaintext
-    ---
-    ID: {log_id}
-    DateTime: YYYY-MM-DD HH:MM:SS (KST)
-    Source: [VSCode / IntelliJ / Git]
-    LogLevel: [INFO / WARN / ERROR]
-    Target: [API_Scheduler / Copilot_Plugin / Build_Engine]
-    RawMessage: {원본 에러나 로그 내용}
-    ---
-    ```
-  - **[신규] Pre-computed Summary 적재**: "최초 실행 시간", "총 몇 시간 사용" 등의 수리 통계 연산 한계를 극복하기 위해 당일 통계를 미리 계산한 `[STATISTICS]` 성격의 요약 로그 데이터를 파이썬 단에서 별도로 생성 및 적재하는 파이프라인을 구동합니다.
-    * **확장된 STATISTICS 청크 규격**:
-      ```plaintext
-      [STATISTICS] [DATE: YYYY-MM-DD]
-      - Total_Usage_Time: {X} Hours
-      - Total_AI_Tokens_Used: {Y} Tokens
-      - Total_Log_Count: {Z} Cases (INFO: {I}, WARN: {W}, ERROR: {E})
-      - Top_Error_Types: [{Error_Name_1}: {Count}, {Error_Name_2}: {Count}]
-      - First_Launch_Time: {HH:MM:SS}
-      ```
-  - **[신규] 출력 가드레일 (Post-processing) 종결 어미 교정**: Gemma가 대화형 어미를 반환하는 경우를 대비하여 파이썬 정규식을 통해 `~함.`, `~요망.`, `~필요.`, `~발생.` 등 명사형 종결로 최종 변환하는 필터를 거칩니다.
-  - **[신규] Fuzzy Matching 매커니즘 보강**: 질문에서 공백을 완전히 제거한 텍스트와 초경량 정규식 패턴 분석을 결합하여 `경고 로드`, `경고로그`, `최근에발생한도커` 등의 변칙 질의를 차단하지 않고 유연하게 통과시킵니다.
-
-
+  - **동적 토큰 조율 (Sliding Window)**: 최종 조립 프롬프트가 1,800 토큰 초과 위험이 있을 시 청크를 리스트에서 통째로 드롭(drop)하지 않고, 각 청크의 `RawMessage` 문자열 길이를 뒤에서부터 자르는 슬라이딩 윈도우 방식(`manage_context_token_limit`)을 구동해 토큰 한계를 맞춥니다.
+  - **[신규] 데이터 전처리 Key-Value 구조화**: Chroma DB 및 SQLite에 적재 전, Key-Value 구조로 원본 메시지를 무조건 구조화하여 단일 청크 무결성을 확보합니다.
+  - **[신규] Pre-computed Summary 적재 및 통계 질의 복합 카운트 바인딩**: 당일 통계를 미리 계산한 `[STATISTICS]` 성격의 요약 로그 데이터를 파이썬 단에서 별도로 생성 및 적재(`stats_db.py`)하며, 질의 시 정규식 파싱을 통해 `Llama 3.2 1B` 모델이 레벨별 수치를 명확하게 대답에 바인딩할 수 있도록 유도 힌트를 프롬프트에 주입하고, 파싱 실패 시 기본값(INFO: 0, WARN: 0, ERROR: 0)으로 치환해 주는 방어 코드를 적용합니다.

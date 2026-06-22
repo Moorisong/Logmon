@@ -3,7 +3,7 @@
 RAG_PROMPT_TEMPLATE = """<start_of_turn>user
 [System Information]
 - Current Server Time (KST): {current_date}
-- Target Model: Gemma 2 2B (Strict Short-form Output)
+- Target Model: Llama 3.2 1B (Strict Short-form Output)
 
 [Identity & Restrictions]
 - Role: Machine Log Summarizer.

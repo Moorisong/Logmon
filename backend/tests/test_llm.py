@@ -16,8 +16,11 @@ from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
+    from backend.llm.memory import _conversation_memory
+    _conversation_memory.clear()
     init_db()
     yield
+    _conversation_memory.clear()
     if os.path.exists(os.environ["LOGMON_DB_DIR"]):
         import shutil
         shutil.rmtree(os.environ["LOGMON_DB_DIR"], ignore_errors=True)
@@ -259,11 +262,11 @@ def test_postprocess_noun_ending():
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
 async def test_ask_rag_agent_hard_ceiling_drop(mock_generate, mock_query):
-    """Hard Ceiling (1,800 토큰 초과 시 오래된 청크 드롭) 규칙 검증"""
+    """Hard Ceiling (1,800 토큰 초과 시 청크 동적 압축) 규칙 검증"""
     # 3개의 긴 문서 반환 (각 2000글자씩)
-    long_doc_1 = "[2026-06-20 09:00:00] [ERROR] " + ("a" * 2000)
-    long_doc_2 = "[2026-06-21 10:00:00] [ERROR] " + ("b" * 2000)
-    long_doc_3 = "[2026-06-22 11:00:00] [ERROR] " + ("c" * 2000)
+    long_doc_1 = "[2026-06-20 09:00:00] [ERROR] RawMessage: " + ("a" * 2000)
+    long_doc_2 = "[2026-06-21 10:00:00] [ERROR] RawMessage: " + ("b" * 2000)
+    long_doc_3 = "[2026-06-22 11:00:00] [ERROR] RawMessage: " + ("c" * 2000)
     
     mock_query.return_value = [[long_doc_1, long_doc_2, long_doc_3]]
     mock_generate.return_value = "처리 완료됨."
@@ -272,13 +275,13 @@ async def test_ask_rag_agent_hard_ceiling_drop(mock_generate, mock_query):
     long_question = "도커 에러 해결법? " + ("q" * 4000)
     
     # RAG 질의 수행
-    with patch('backend.llm.rag_engine.logger') as mock_logger:
+    with patch('backend.llm.utils.logger') as mock_logger:
         answer = await ask_rag_agent(long_question, "test_user_key")
         
-        # 1800 토큰 초과로 인해 [WARN] 로그가 최소 1회 발생해야 함
+        # 1800 토큰 초과로 인해 [WARN] Truncating 로그가 최소 1회 발생해야 함
         warn_called = False
         for args, kwargs in mock_logger.warning.call_args_list:
-            if args and "[WARN] Token limit exceeded. Dropping oldest chunk..." in args[0]:
+            if args and "[WARN] Token limit exceeded" in args[0] and "Truncating RawMessage" in args[0]:
                 warn_called = True
                 break
         assert warn_called

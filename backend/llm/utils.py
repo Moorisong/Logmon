@@ -2,8 +2,8 @@
 import re
 import logging
 import datetime
-import sqlite3
 from typing import Dict, Any, List
+from backend.llm.stats_db import upsert_daily_statistics
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,6 @@ def postprocess_noun_ending(text: str) -> str:
     if not text:
         return ""
         
-    # 문장 마지막과 구둣점 앞의 대화형 종결 어미를 명사형으로 바꿉니다.
     rules = [
         (r"되었습니다\.?", "됨."),
         (r"되었습니다", "됨"),
@@ -87,142 +86,92 @@ def postprocess_noun_ending(text: str) -> str:
         processed = re.sub(pattern, repl, processed)
     return processed
 
-def upsert_daily_statistics(user_key: str) -> None:
+def parse_relative_datetime(question: str) -> tuple:
     """
-    오늘 KST 기준의 사용 통계(총 사용시간, 사용 토큰 수, 레벨별 로그 총 개수, 에러 Top 3, 최초 실행 시간)를 
-    집계하여 [STATISTICS] 성격의 로그로 SQLite 및 Chroma DB에 Upsert합니다.
+    유저 질문에서 '지난 N일', '이틀 동안', '일주일 동안' 등의 상대적인 기간 키워드를 파싱하여
+    현재 KST(Asia/Seoul) 시간 기준으로 (start_time, end_time) 문자열 범위를 반환합니다.
+    실패 시 기본적으로 (None, None)을 안전하게 반환합니다.
     """
-    from backend.db.connection import get_connection
-    from backend.db.chroma_handler import process_and_store_vector, delete_vectors_by_log_ids
-    import collections
-    
-    timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
-    kst_now = datetime.datetime.now(timezone_kst)
-    today_str = kst_now.strftime("%Y-%m-%d")
-    
-    conn = get_connection()
     try:
-        cursor = conn.cursor()
+        timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+        now = datetime.datetime.now(timezone_kst)
         
-        # 1. 사용시간, 토큰 수, 최초 실행 시간 추출
-        cursor.execute("""
-            SELECT 
-                SUM(duration_seconds),
-                SUM(input_tokens + output_tokens),
-                MIN(timestamp)
-            FROM ide_activity_logs
-            WHERE user_key = ? 
-              AND date(timestamp) = date('now', 'localtime')
-              AND task_name != 'STATISTICS'
-        """, (user_key,))
-        row = cursor.fetchone()
+        days = None
+        q_clean = question.replace(" ", "")
         
-        total_duration = row[0] or 0
-        total_tokens = row[1] or 0
-        min_timestamp = row[2]
-        
-        total_usage_hours = round(total_duration / 3600.0, 1)
-        first_launch_time = min_timestamp.split(" ")[1] if min_timestamp else "00:00:00"
-        
-        # 2. 레벨별 로그 개수 추출
-        cursor.execute("""
-            SELECT event_type, COUNT(id)
-            FROM ide_activity_logs
-            WHERE user_key = ?
-              AND date(timestamp) = date('now', 'localtime')
-              AND task_name != 'STATISTICS'
-            GROUP BY event_type
-        """, (user_key,))
-        level_counts = {r[0]: r[1] for r in cursor.fetchall()}
-        
-        count_info = level_counts.get("INFO", 0)
-        count_warn = level_counts.get("WARNING", 0) + level_counts.get("WARN", 0)
-        count_error = level_counts.get("ERROR", 0) + level_counts.get("CRITICAL", 0)
-        total_log_count = sum(level_counts.values())
-        
-        # 3. 에러 종류 빈도수 집계 (ERROR, CRITICAL 로그 대상)
-        cursor.execute("""
-            SELECT raw_message FROM ide_activity_logs
-            WHERE user_key = ?
-              AND date(timestamp) = date('now', 'localtime')
-              AND event_type IN ('ERROR', 'CRITICAL')
-              AND task_name != 'STATISTICS'
-        """, (user_key,))
-        error_msgs = [r[0] for r in cursor.fetchall() if r[0]]
-        
-        error_names = []
-        for msg in error_msgs:
-            matches = re.findall(r'([A-Za-z_]+Exception|[A-Za-z_]+Error|Connection \w+|Permission \w+|Timeout)', msg, re.IGNORECASE)
-            if matches:
-                error_names.extend([m.strip() for m in matches])
-            else:
-                first_line = msg.strip().split('\n')[0]
-                clean_line = re.sub(r'[^A-Za-z0-9\s]', '', first_line)
-                words = clean_line.split()
-                if words:
-                    error_names.append(" ".join(words[:2]))
-                    
-        counter = collections.Counter(error_names)
-        top_errors = counter.most_common(3)
-        top_error_str = ", ".join([f"{name}: {count}" for name, count in top_errors])
-        if not top_error_str:
-            top_error_str = "None"
-            
-        stat_message = f"""[STATISTICS] [DATE: {today_str}]
-- Total_Usage_Time: {total_usage_hours} Hours
-- Total_AI_Tokens_Used: {total_tokens} Tokens
-- Total_Log_Count: {total_log_count} Cases (INFO: {count_info}, WARN: {count_warn}, ERROR: {count_error})
-- Top_Error_Types: [{top_error_str}]
-- First_Launch_Time: {first_launch_time}"""
-        
-        # 오늘 날짜의 기존 STATISTICS 레코드가 있는지 검사
-        cursor.execute("""
-            SELECT id FROM ide_activity_logs 
-            WHERE user_key = ? 
-              AND date(timestamp) = date('now', 'localtime')
-              AND task_name = 'STATISTICS'
-            LIMIT 1
-        """, (user_key,))
-        existing = cursor.fetchone()
-        
-        cursor.execute("BEGIN TRANSACTION;")
-        if existing:
-            log_id = existing[0]
-            cursor.execute("""
-                UPDATE ide_activity_logs
-                SET raw_message = ?, timestamp = ?
-                WHERE id = ?
-            """, (stat_message, kst_now.strftime("%Y-%m-%d %H:%M:%S"), log_id))
+        if "이틀" in question:
+            days = 2
+        elif "하루" in question:
+            days = 1
+        elif "일주일" in question:
+            days = 7
         else:
-            cursor.execute("""
-                INSERT INTO ide_activity_logs (
-                    user_key, source_tool, timestamp, event_type, 
-                    task_name, duration_seconds, input_tokens, output_tokens, 
-                    raw_message, has_code_block
-                ) VALUES (?, 'SYSTEM', ?, 'INFO', 'STATISTICS', 0, 0, 0, ?, 0)
-            """, (user_key, kst_now.strftime("%Y-%m-%d %H:%M:%S"), stat_message))
-            log_id = cursor.lastrowid
+            match = re.search(r"(?:지난|최근)?\s*(\d+)\s*일\s*(?:동안)?", question)
+            if match:
+                days = int(match.group(1))
+        
+        if days is not None:
+            start_date = now - datetime.timedelta(days=days)
+            start_time = f"{start_date.strftime('%Y-%m-%d')} 00:00:00"
+            end_time = now.strftime("%Y-%m-%d %H:%M:%S")
+            return start_time, end_time
             
-        conn.commit()
-        
-        # Chroma DB 덮어쓰기 업데이트
-        delete_vectors_by_log_ids([log_id])
-        
-        data_to_store = {
-            "user_key": user_key,
-            "timestamp": kst_now.strftime("%Y-%m-%d %H:%M:%S"),
-            "source_tool": "SYSTEM",
-            "event_type": "INFO",
-            "raw_message": stat_message
-        }
-        process_and_store_vector(log_id, data_to_store)
-        logger.info(f"당일 통계 요약 적재 성공 (log_id: {log_id}):\n{stat_message}")
-        
     except Exception as e:
-        logger.error(f"당일 통계 요약 적재 실패: {e}")
-        try:
-            conn.rollback()
-        except:
-            pass
-    finally:
-        conn.close()
+        logger.error(f"상대 기간 날짜 파싱 중 예외 발생: {e}")
+        
+    return None, None
+
+def manage_context_token_limit(docs: List[str], question: str, final_question: str, selected_template: str, current_date_str: str) -> str:
+    """
+    총 토큰수가 1,800을 초과할 때, 청크를 리스트에서 통째로 날리지 않고,
+    각 청크의 RawMessage 길이를 점진적으로 슬라이싱하여 1,800 토큰 이하로 맞춘 context_str을 반환합니다.
+    """
+    from backend.llm.reranker import rerank_documents
+
+    def _compress(text: str) -> str:
+        if not text:
+            return ""
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        cleaned = "\n".join(lines)
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        return cleaned
+
+    max_msg_len = 1000
+    step = 150
+    
+    context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=6000)
+    context_str = _compress(context_str)
+    
+    while max_msg_len > 50:
+        prompt = selected_template.format(
+            current_date=current_date_str,
+            context=context_str,
+            question=final_question
+        )
+        approx_tokens = estimate_tokens(prompt)
+        if approx_tokens <= 1800:
+            break
+            
+        logger.warning(f"[WARN] Token limit exceeded ({approx_tokens:.1f} tokens). Truncating RawMessage to {max_msg_len} chars...")
+        
+        new_docs = []
+        for doc in docs:
+            marker = "RawMessage: "
+            idx = doc.find(marker)
+            if idx != -1:
+                header = doc[:idx + len(marker)]
+                body = doc[idx + len(marker):]
+                footer = ""
+                if body.endswith("---"):
+                    body = body[:-3]
+                    footer = "---"
+                truncated_body = body[:max_msg_len].strip()
+                new_docs.append(header + truncated_body + "\n" + footer)
+            else:
+                new_docs.append(doc)
+                
+        context_str = rerank_documents(query=question, documents=new_docs, top_k=3, max_chars=6000)
+        context_str = _compress(context_str)
+        max_msg_len -= step
+        
+    return context_str

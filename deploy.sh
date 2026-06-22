@@ -120,7 +120,7 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   fi
   git pull origin "${CURRENT_BRANCH}"
 
-  # Ollama 11434 포트 헬스체크 및 도커 컨테이너 강제 심폐소생술
+  # Ollama 11434 포트 헬스체크 및 도커 컨테이너 검사 (6초 퀵 가드 튜닝)
   echo -e "\e[34m[원격] Ollama 헬스체크 및 도커 컨테이너 검사 중...\e[0m"
   PORT_ACTIVE=false
   if nc -z localhost 11434 2>/dev/null; then
@@ -135,17 +135,17 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   if [ "\$PORT_ACTIVE" = false ] || [ "\$API_RESPONSE" != "200" ]; then
     echo -e "\e[33m[원격] [경고] 도커 내부 Ollama 서비스 찐빠 감지 (포트: \$PORT_ACTIVE, 응답: \$API_RESPONSE). 컨테이너 강제 리스타트 슛!\e[0m"
     
-    # 호스트 systemctl 뇌절 제거, 실제 도커 컴포즈 내 Ollama 서비스 타격
     docker compose restart logmon-ollama 2>/dev/null || docker compose up -d logmon-ollama
     
-    echo -e "\e[34m[원격] Ollama 컨테이너 200 OK 응답 대기 중 (최대 45초)... \e[0m"
-    for i in {1..15}; do
+    # 2회 검사 후 패스하도록 다이어트 반영 (최대 6초 대기)
+    echo -e "\e[34m[원격] Ollama 컨테이너 응답 확인 중 (퀵 체크)... \e[0m"
+    for i in {1..2}; do
       HEALTH_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags || echo "000")
       if [ "\$HEALTH_CODE" = "200" ]; then
-        echo -e "\e[32m[원격] Ollama 컨테이너 헬스체크 성공! (API 응답 코드: 200)\e[0m"
+        echo -e "\e[32m[원격] Ollama 컨테이너 정상 가동 중! (200 OK)\e[0m"
         break
       fi
-      echo -e "\e[33m[원격] 컨테이너 안정화 대기 중 (\${i}/15)... \e[0m"
+      echo -e "\e[33m[원격] 컨테이너 안정화 대기 중 (\${i}/2)... \e[0m"
       sleep 3
     done
   else

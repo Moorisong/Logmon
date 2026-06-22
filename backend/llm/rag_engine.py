@@ -149,7 +149,13 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         final_question = compress_context(final_question)
             
         # 6. 프롬프트 바인딩 및 추론
-        prompt = RAG_PROMPT_TEMPLATE.format(context=context_str, question=final_question)
+        timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+        current_date_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
+        prompt = RAG_PROMPT_TEMPLATE.format(
+            current_date=current_date_str,
+            context=context_str,
+            question=final_question
+        )
         answer = await generate_completion(prompt)
         
         # 7. 대화 히스토리 저장

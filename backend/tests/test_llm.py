@@ -92,6 +92,12 @@ async def test_ask_rag_agent_with_context(mock_generate, mock_query):
     prompt_sent = mock_generate.call_args[0][0]
     assert "과거 로그 내용 1" in prompt_sent
     assert "도커 에러 어떻게 풀었지?" in prompt_sent
+    
+    # KST 오늘 날짜가 프롬프트에 동적 주입되었는지 확인
+    import datetime
+    timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+    today_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
+    assert f"Current Server Time (KST): {today_str}" in prompt_sent
 
 @pytest.mark.asyncio
 @respx.mock
@@ -184,8 +190,8 @@ async def test_llm_client_general_exception_dynamic_mock_fallback():
 async def test_guardrail_routing():
     """인풋 가드레일 라우팅 테스트 (비정상 입력 차단)"""
     from backend.llm.guardrail import check_guardrail
-    assert check_guardrail("안녕") is not None
-    assert check_guardrail("너 바보야?") is not None
+    assert check_guardrail("안녕") == "최근 기록된 작업 로그가 존재하지 않습니다."
+    assert check_guardrail("너 바보야?") == "최근 기록된 작업 로그가 존재하지 않습니다."
     assert check_guardrail("도커 에러가 왜 나지?") is None
 
 @pytest.mark.asyncio

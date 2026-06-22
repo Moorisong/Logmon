@@ -40,6 +40,7 @@ backend/
    - **이벤트 타입 분류**: 로그 덤프(`LOG_DUMP`) 적재 시, 각 청크의 본문 텍스트 내 키워드를 분석하여 `[error]` 등의 키워드가 있으면 `event_type` 메타데이터를 `ERROR` 또는 `WARNING`으로 분류하여 저장합니다.
    - **날짜 필터링**: 사용자 질문에 '오늘', 'today', '투데이' 등의 오늘 날짜 관련 검색 의도가 발견되면, KST 로컬 타임존 기준으로 오늘 00:00:00 이후에 등록된 로그만 검색할 수 있도록 `timestamp` 메타데이터 조건(`$gte`)을 필터링 쿼리에 복합(`$and`)으로 결합하여 쿼리합니다.
    - **[추가] 쿼리 파서(Query Parser) 및 후처리 필터링**: 질문 텍스트에서 시간대 범위('5분', '30분', '오전 10시', '새벽', '어제', '일주일'), 로그 레벨('Error', 'Warning', 'Critical'), 그리고 기술 키워드('Git', 'Connection', 'DB', 'Build' 등)를 정교하게 추출하여 `query_vectors` API의 후처리(Post-filtering) 필터링에 결합해 RAG 컨텍스트 무결성을 확보합니다.
+   - **[추가] Pre-stage 가드레일 필터링**: Chroma DB 쿼리를 돌리기 전(Pre-stage) 단계에서, 질문 텍스트 내에 개발/로그 관련 핵심 기술 키워드(한글/영문)가 아예 포함되어 있지 않은 경우, 즉시 `"최근 기록된 작업 로그가 존재하지 않습니다."`를 반환하도록 설계하여 엉뚱한 로그가 유입되어 발생하는 프롬프트 오류(안티그래비티 현상)를 선제 방어합니다.
 
 
 #### 3단계: 프롬프트 주입 및 답변 생성
@@ -49,35 +50,26 @@ backend/
 * **[개선] 초경량 리랭커 도입**: 저전력 CPU(N95) 환경에서 sentence-transformers 모델 추론 시 30초 이상 지연되는 타임아웃 문제를 해결하기 위해, 환경변수 `RERANKER_TYPE` (기본값: `light`)를 지원합니다. `light` 상태에서는 단어 매칭 점수제 기반의 **초경량 룰 베이스 리랭커**를 활용하여 CPU 부하를 방지하고 연산 속도를 1ms 내외로 최적화합니다.
 
 ```python
-RAG_PROMPT_TEMPLATE = """[Identity]
-Role: Machine Log Summarizer.
-Restrictions: STRICTLY NO greetings, NO explanations, NO polite endings (e.g., '~입니다', '~보입니다', '~하십시오'), NO conversation. Output ONLY the defined Markdown formats using Key-Value or Bullet structure.
-Ending: All sentences must end in a noun or noun phrase (명사형 종결).
+RAG_PROMPT_TEMPLATE = """<start_of_turn>user
+[System Information]
+- Current Server Time (KST): {current_date}
+- Target Model: Gemma 2 2B (Strict Short-form Output)
 
-[Task]
-Identify the User Query Intent and output EXACTLY in the corresponding format below based ONLY on the [Context] provided. If context is empty or has no logs, output "최근 기록된 작업 로그가 존재하지 않습니다." and stop immediately.
-
-[Formats]
-1. Intent 1: Count / List request (e.g., "how many?", "list logs", "로그 몇개야?")
-### 📊 분석 결과
-- 통계: 에러 총 [X]개 발생
-- 내역:
-  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
-
-2. Intent 2: Cause / Troubleshooting / Type analysis (e.g., "what is the cause?", "how to fix?")
-### 🔍 에러 원인 분석
-- 내역:
-  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
-- 유형: [카테고리] ([핵심 장애 원인 요약 1문장])
-- 조치: [해결을 위해 필요한 액션 1문장]
+[Identity & Restrictions]
+- Role: Machine Log Summarizer.
+- Strict Rule 1: NO greetings, NO explanations, NO polite endings (e.g., '~입니다', '~보입니다', '~하십시오'), NO conversation. 
+- Strict Rule 2: All sentences must end in a noun or noun phrase (명사형 종결: '~함', '~발생', '~요망', '~원본]').
+- Strict Rule 3: Output ONLY the defined Markdown formats based ONLY on the provided [Context].
+- Strict Rule 4: If [Context] is empty, contains no logs, or the user query is unrelated to system logs (e.g., weather, food, general chat), output EXACTLY this phrase and STOP immediately: "최근 기록된 작업 로그가 존재하지 않습니다."
 
 [Context]
 {context}
 
 [User Query]
 {question}
-
-[Answer] (Output only matching Intent Markdown format):"""
+<end_of_turn>
+<start_of_turn>model
+"""
 ```
 
 ---

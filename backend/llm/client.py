@@ -34,8 +34,9 @@ async def generate_completion(prompt: str) -> str:
     }
     
     try:
-        # 💡 타임아웃을 180초(3분)로 넉넉하게 늘려 오야마씨의 장고를 기다려줍니다.
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        # 💡 연결 타임아웃 3초, 전체 타임아웃 180초로 설정하여 N95 병목 시 오프라인 오인식 방지
+        timeout_config = httpx.Timeout(180.0, connect=3.0)
+        async with httpx.AsyncClient(timeout=timeout_config) as client:
             response = await client.post(endpoint, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -133,15 +134,64 @@ def query_sqlite_logs(question: str) -> list:
 
 
 def generate_simulated_response(question: str, rows: list) -> str:
-    query_lower = question.lower()
-    is_stat_query = any(k in query_lower for k in ["통계", "시간", "토큰", "개수", "몇 개", "몇개", "몇 건", "몇건", "사용량", "count", "how many"])
+    from backend.llm.utils import parse_relative_datetime, postprocess_noun_ending
+    from backend.db.connection import get_connection
+    import datetime as dt
     
-    if is_stat_query:
-        from backend.llm.stats_db import get_latest_statistics_data
-        from backend.llm.utils import postprocess_noun_ending
-        stat_data = get_latest_statistics_data()
-        ans = f"백업 장부(SQLite) 분석 결과, 당일({stat_data['date_str']}) 누적 통계는 사용 시간: {stat_data['total_usage_hours']}시간, AI 토큰량: {stat_data['total_tokens']}개로 기록되어 있음."
-        return postprocess_noun_ending(ans)
+    # 1. 자연어 기간 파서 연동
+    try:
+        start_time, end_time = parse_relative_datetime(question)
+    except Exception:
+        start_time, end_time = None, None
+        
+    if not start_time or not end_time:
+        # 기본값: 오늘 하루
+        now = dt.datetime.now()
+        start_time = now.strftime("%Y-%m-%d 00:00:00")
+        end_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+    query_lower = question.lower()
+    
+    # 2. 질문 의도 분석 및 SQLite 쿼리 분기
+    is_time_token_query = any(k in query_lower for k in ["시간", "토큰", "사용량", "duration", "token"])
+    is_err_count_query = any(k in query_lower for k in ["개수", "몇 개", "몇개", "몇 건", "몇건", "건수", "수량", "총합", "통계", "집계", "count", "how many"])
+    
+    if is_time_token_query or is_err_count_query:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            if is_time_token_query:
+                # 시간/토큰 집계 쿼리
+                cursor.execute("""
+                    SELECT SUM(duration_seconds), SUM(input_tokens + output_tokens)
+                    FROM ide_activity_logs
+                    WHERE timestamp BETWEEN ? AND ? AND task_name != 'STATISTICS'
+                """, (start_time, end_time))
+                row = cursor.fetchone()
+                total_sec = row[0] or 0 if row else 0
+                total_tokens = row[1] or 0 if row else 0
+                total_hours = round(total_sec / 3600.0, 1)
+                
+                ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
+                return postprocess_noun_ending(ans)
+            else:
+                # 로그/에러 개수 집계 쿼리
+                cursor.execute("""
+                    SELECT COUNT(id)
+                    FROM ide_activity_logs
+                    WHERE timestamp BETWEEN ? AND ? 
+                      AND event_type IN ('ERROR', 'CRITICAL') 
+                      AND task_name != 'STATISTICS'
+                """, (start_time, end_time))
+                row = cursor.fetchone()
+                err_count = row[0] or 0 if row else 0
+                
+                ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 발생한 에러 로그는 총 {err_count}개임."
+                return postprocess_noun_ending(ans)
+        except Exception as e:
+            logger.error(f"Fallback SQLite 직접 집계 중 에러 발생: {e}")
+        finally:
+            conn.close()
 
     if not rows:
         return "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."

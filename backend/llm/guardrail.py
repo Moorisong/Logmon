@@ -4,6 +4,7 @@ import re
 DEV_KEYWORDS = {
     # 기존 키워드
     "error", "warning", "log", "db", "git", "docker", "port", "binding", "connection", "critical", "exception", "crash",
+    "ollama", "sqlite", "engine", "ai",
     "에러", "오류", "경고", "로그", "디비", "깃", "도커", "포트", "바인딩", "커넥션", "문제", "해결", "작업", "크래시",
     # IDE 관련
     "ide", "vscode", "intellij", "인텔리제이",

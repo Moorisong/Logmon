@@ -17,6 +17,7 @@ from backend.llm.utils import parse_relative_datetime, manage_context_token_limi
 from backend.llm.client import generate_completion, OLLAMA_HOST, MODEL_NAME
 from backend.llm.rag_engine import ask_rag_agent
 from backend.llm.prompt_templates import COUNT_PROMPT_TEMPLATE
+from backend.llm.guardrail import check_guardrail
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
@@ -180,12 +181,43 @@ async def test_client_simulated_response_stats_binding():
             "has_code_block": 0
         })
         
-        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n오늘 통계 보여줘\n[답변]"
+        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n오늘 사용량 보여줘\n[답변]"
         result = await generate_completion(prompt)
         
         assert "백업 장부(SQLite) 분석 결과" in result
-        assert "당일(2026-06-22) 누적 통계는 사용 시간: 3.5시간" in result
-        assert "AI 토큰량: 12500개" in result
+        assert "지정 기간" in result
+        assert "누적 통계는 사용 시간: 0.0시간" in result  # STATISTICS 태스크를 제외하고 집계하므로 더미 0.0 확인
+        assert "AI 토큰량: 0개" in result
+    finally:
+        if original_env is not None:
+            os.environ["LOGMON_ENV"] = original_env
+        else:
+            del os.environ["LOGMON_ENV"]
+
+# 7. 신규 가드레일 허용 검증 테스트
+def test_guardrail_allows_infrastructure_keywords():
+    """ollama, sqlite, db, 로그, engine, ai 등 인프라 질문이 가드레일에 차단되지 않는지 검증"""
+    assert check_guardrail("ollama는 어떻게 구동되지?") is True
+    assert check_guardrail("sqlite 쿼리 결과 확인해줘") is True
+    assert check_guardrail("RAG engine 동작 원리") is True
+    assert check_guardrail("AI 모델 변경 내역") is True
+
+# 8. Ollama 정상 작동(Online) 시 SQLite Fallback 미동작 검증 테스트
+@pytest.mark.asyncio
+@respx.mock
+async def test_client_completion_no_fallback_on_online():
+    """Ollama가 정상 통신 가능한(Online) 상태일 때는 Fallback이 트리거되지 않고 정상 답변이 리턴되는지 검증"""
+    endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
+    respx.post(endpoint).mock(return_value=httpx.Response(200, json={"response": "Online Model Response"}))
+    
+    original_env = os.environ.get("LOGMON_ENV")
+    os.environ["LOGMON_ENV"] = "dev"
+    
+    try:
+        result = await generate_completion("사용시간 가이드")
+        # Fallback 멘트가 아니어야 함
+        assert "백업 장부(SQLite) 분석 결과" not in result
+        assert result == "Online Model Response"
     finally:
         if original_env is not None:
             os.environ["LOGMON_ENV"] = original_env

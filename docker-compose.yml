@@ -22,13 +22,14 @@ services:
     env_file:
       - .env
     environment:
+      - TZ=Asia/Seoul  # ◀ [★시차 완치] 한국 표준시(KST) 주입 완료!
       - LOGMON_DB_DIR=/app/data
       - LOGMON_CHROMA_DIR=/app/chroma_data
       - OLLAMA_HOST=http://logmon-ollama:11434
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
     volumes:
       - /home/ksh/logmon/backend:/app/backend
-      - /home/ksh/logmon/data/db:/app/data          # ◀ 진짜 장부는 여기(/app/data)에 저장됩니다!
+      - /home/ksh/logmon/data/db:/app/data
       - /home/ksh/logmon/data/chroma:/app/chroma_data
     networks:
       - logmon-network
@@ -50,6 +51,7 @@ services:
     env_file:
       - .env
     environment:
+      - TZ=Asia/Seoul  # ◀ (옵션) UI 컨테이너도 시간 맞춰두면 로그 볼 때 편합니다!
       - BACKEND_URL=http://logmon-backend:8000
       - LOGMON_API_KEY=${ALLOWED_API_KEYS}
     networks:

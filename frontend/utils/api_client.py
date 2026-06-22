@@ -45,7 +45,7 @@ def send_chat(question: str) -> str:
     url = f"{BACKEND_URL}/api/logmon/chat"
     payload = {"question": question}
     try:
-        response = requests.post(url, json=payload, headers=get_headers(), timeout=40.0)
+        response = requests.post(url, json=payload, headers=get_headers(), timeout=180.0)
         response.raise_for_status()
         return response.json().get("answer", "응답 포맷 에러")
     except requests.exceptions.Timeout:

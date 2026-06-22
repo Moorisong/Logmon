@@ -70,6 +70,21 @@ def test_send_chat_timeout(mock_requests_post):
     # Assert timeout error message is returned
     assert result == "현재 AI 엔진 서비스가 일시 정지 중이거나 과부하 상태입니다."
 
+@patch("utils.api_client.requests.post")
+def test_send_chat_timeout_setting(mock_requests_post):
+    """send_chat API 호출 시 타임아웃 파라미터가 3분(180초)으로 고정되어 넘어가는지 검증"""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"answer": "테스트 답변"}
+    mock_requests_post.return_value = mock_response
+    
+    send_chat("테스트 질문")
+    
+    mock_requests_post.assert_called_once()
+    args, kwargs = mock_requests_post.call_args
+    assert kwargs.get("timeout") == 180.0
+
+
 def test_offline_ui_condition():
     # 1) 서버 오프라인(is_online=False)일 때 => 에러 상태 (블러 활성화)
     stats_offline = {"is_online": False}

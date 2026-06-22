@@ -44,9 +44,11 @@
 ### 1) [🍏 macOS / Linux]
 * **설치 스크립트**: `install-agent.sh`
 * **동작 방식**: 
-  * `/usr/local/bin/logmon-agent`에 바이너리를 다운로드 및 배치합니다.
-  * macOS의 경우 `launchd` plist 등록(`~/Library/LaunchAgents/com.logmon.agent.plist`), Linux의 경우 `cron` 서비스에 `*/5 * * * *` 스케줄을 추가하여 5분 주기 백그라운드 배치를 자동 가동시킵니다.
-* **제거 스크립트**: `uninstall-agent.sh` (데몬/스케줄러 목록에서 삭제하고 바이너리 및 체크포인트 파일 제거).
+  * `/usr/local/bin/logmon-agent`에 바이너리를 다운로드 및 배치합니다. (또는 쉘 스크립트 구동 에이전트의 경우 `~/.logmon_agent/`에 파이썬 파일 배치)
+  * macOS의 경우 `launchd` plist 등록(`~/Library/LaunchAgents/com.logmon.agent.plist`)을 하되, `agent_main.py`를 직접 기동하지 않고 **Wrapper 쉘 스크립트인 `run_agent.sh`**를 거쳐 실행하도록 구성합니다.
+  * `run_agent.sh`는 `agent_main.py`가 에러 코드(비정상 종료)를 반환하면 5초 대기 후 최대 3회까지 재기동(심폐소생술)을 수행하며, 3회 모두 실패 시 최종 에러 코드를 반환하고 정상 종료 시에는 즉시 종료하여 자원을 반환합니다.
+  * Linux의 경우 `cron` 서비스에 `*/5 * * * *` 스케줄을 추가하여 5분 주기 백그라운드 배치를 자동 가동시킵니다.
+* **제거 스크립트**: `uninstall-agent.sh` (데몬/스케줄러 목록에서 삭제하고 바이너리, 스크립트 및 체크포인트 파일 제거).
 
 ### 2) [🪟 Windows]
 * **설치 스크립트**: `install-agent.ps1` (PowerShell 관리자 권한 실행 요구)

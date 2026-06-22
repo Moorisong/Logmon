@@ -40,9 +40,11 @@ curl -sL "$BACKEND_URL/api/logmon/static/agent_main.py" -o "$AGENT_SCRIPT_PATH"
 curl -sL "$BACKEND_URL/api/logmon/static/config.py" -o "$AGENT_DIR/config.py"
 curl -sL "$BACKEND_URL/api/logmon/static/sender.py" -o "$AGENT_DIR/core/sender.py"
 curl -sL "$BACKEND_URL/api/logmon/static/checkpoint.py" -o "$AGENT_DIR/core/checkpoint.py"
+curl -sL "$BACKEND_URL/api/logmon/static/run_agent.sh" -o "$AGENT_DIR/run_agent.sh"
+chmod +x "$AGENT_DIR/run_agent.sh"
 
 # 다운로드 검증
-if [ ! -f "$AGENT_SCRIPT_PATH" ] || grep -q "Not Found" "$AGENT_SCRIPT_PATH"; then
+if [ ! -f "$AGENT_SCRIPT_PATH" ] || [ ! -f "$AGENT_DIR/run_agent.sh" ] || grep -q "Not Found" "$AGENT_SCRIPT_PATH"; then
   echo "❌ 에이전트 스크립트 다운로드에 실패했습니다."
   exit 1
 fi
@@ -75,8 +77,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
     <string>com.logmon.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$EXEC_CMD</string>
-        <string>$EXEC_ARG1</string>
+        <string>$AGENT_DIR/run_agent.sh</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>

@@ -30,12 +30,12 @@ backend/
 
 #### 1단계: macOS / Linux 설치 및 제거 스크립트 구현
 * **`install-agent.sh`**:
-  1. 시스템 아키텍처(Intel/Apple Silicon)를 판별하여 백엔드 서버로부터 그에 맞는 패키징 바이너리를 `/usr/local/bin/logmon-agent`에 다운로드합니다.
-  2. 다운로드 완료 후 `chmod +x` 권한을 적용합니다.
-  3. **스케줄러 등록**: macOS는 `~/Library/LaunchAgents/com.logmon.agent.plist`를 자동 생성하고 300초(5분) 주기로 바이너리가 구동되도록 `launchctl load`를 지시합니다. 리눅스 계열인 경우 사용자 `crontab`에 `*/5 * * * * /usr/local/bin/logmon-agent` 항목을 쉘을 통해 주입합니다.
+  1. 시스템 아키텍처(Intel/Apple Silicon)를 판별하여 백엔드 서버로부터 그에 맞는 패키징 바이너리를 `/usr/local/bin/logmon-agent`에 다운로드합니다. (또는 파이썬 에이전트 관련 스크립트들을 `~/.logmon_agent/` 하위 폴더에 세팅합니다.)
+  2. 에이전트 실행 1차 방어선 역할을 하는 **`run_agent.sh` Wrapper 스크립트**를 다운로드하여 `~/.logmon_agent/run_agent.sh`에 배치하고 `chmod +x` 권한을 부여합니다.
+  3. **스케줄러 등록**: macOS는 `~/Library/LaunchAgents/com.logmon.agent.plist`를 자동 생성하고, 직접 파이썬을 가리키는 대신 `~/.logmon_agent/run_agent.sh`를 실행하도록 `<key>ProgramArguments</key>`를 지정하고 300초(5분) 주기로 구동되도록 `launchctl load`를 지시합니다. 리눅스 계열인 경우 사용자 `crontab`에 `*/5 * * * * /usr/local/bin/logmon-agent` 항목을 쉘을 통해 주입합니다.
 * **`uninstall-agent.sh`**:
   1. `launchctl unload` 혹은 `crontab`에서 로그몬 스케줄 엔트리를 삭제합니다.
-  2. 로컬 바이너리 및 생성되었던 `.logmon_checkpoint` 캐시 파일을 깨끗이 지웁니다.
+  2. 로컬 바이너리, `run_agent.sh` 및 생성되었던 `.logmon_checkpoint` 캐시 파일을 깨끗이 지웁니다.
 
 #### 2단계: Windows PowerShell 설치 및 제거 스크립트 구현
 * **`install-agent.ps1`**:

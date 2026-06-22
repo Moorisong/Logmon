@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    macOS 런치 에이전트 등록 경로: ~/Library/LaunchAgents/com.logmon.agent.plist
+    등록 및 실행 명령어:
+        launchctl load ~/Library/LaunchAgents/com.logmon.agent.plist
+    등록 해제 명령어:
+        launchctl unload ~/Library/LaunchAgents/com.logmon.agent.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.logmon.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <!-- 사용자 홈 디렉토리 경로에 맞춰 수정해서 사용하거나 install-agent.sh를 통해 자동 배포하십시오. -->
+        <string>{{HOME_DIR}}/.logmon_agent/run_agent.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>{{HOME_DIR}}/.logmon_agent:{{HOME_DIR}}/.logmon_agent/..</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

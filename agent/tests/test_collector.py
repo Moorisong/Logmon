@@ -57,15 +57,17 @@ def test_offset_logic():
 
 
 # 3. urllib HTTP 통신 방어 및 실패 롤백 테스트
+@patch('os.path.getsize')
 @patch('agent.core.sender.update_offset')
 @patch('urllib.request.urlopen')
 @patch('os.path.exists')
 @patch('builtins.open', new_callable=mock_open, read_data=b"test new log line\n")
-def test_http_sender_error_rollback(mock_file, mock_exists, mock_urlopen, mock_update_offset):
+def test_http_sender_error_rollback(mock_file, mock_exists, mock_urlopen, mock_update_offset, mock_getsize):
     """
     서버 500 에러 또는 타임아웃 발생 시 오프셋 갱신 로직을 타지 않고 안전하게 스킵되는지 테스트
     """
     mock_exists.return_value = True # 파일 존재함
+    mock_getsize.return_value = 18
     m_file_instance = mock_file.return_value
     m_file_instance.tell.return_value = 18
     dummy_file = "/tmp/dummy2.log"
@@ -80,15 +82,17 @@ def test_http_sender_error_rollback(mock_file, mock_exists, mock_urlopen, mock_u
     # 오프셋이 업데이트되지 않아야 함
     mock_update_offset.assert_not_called()
 
+@patch('os.path.getsize')
 @patch('agent.core.sender.update_offset')
 @patch('urllib.request.urlopen')
 @patch('os.path.exists')
 @patch('builtins.open', new_callable=mock_open, read_data=b"test new log line\n")
-def test_http_sender_success(mock_file, mock_exists, mock_urlopen, mock_update_offset):
+def test_http_sender_success(mock_file, mock_exists, mock_urlopen, mock_update_offset, mock_getsize):
     """
     전송 성공 시 오프셋이 정상적으로 갱신되는지 테스트
     """
     mock_exists.return_value = True # 파일 존재함
+    mock_getsize.return_value = 18
     m_file_instance = mock_file.return_value
     m_file_instance.tell.return_value = 18
     dummy_file = "/tmp/dummy3.log"

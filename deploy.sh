@@ -152,6 +152,13 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   echo -e "\e[34m[원격] Git Pull 실행 중... (브랜치: ${CURRENT_BRANCH})\e[0m"
   git fetch origin
   git checkout "${CURRENT_BRANCH}"
+  
+  # untracked 파일 충돌 방지를 위한 백업 가드 추가
+  if [ -f "backend/db/logmon.db" ] && ! git ls-files --error-unmatch backend/db/logmon.db >/dev/null 2>&1; then
+    echo -e "\e[33m[원격] 추적되지 않는 backend/db/logmon.db 파일이 감지되어 백업을 수행합니다.\e[0m"
+    mv backend/db/logmon.db "backend/db/logmon.db.bak_\$(date +%Y%m%d_%H%M%S)" || true
+  fi
+
   git pull origin "${CURRENT_BRANCH}"
   
   # 3. Docker Compose 빌드 및 실행

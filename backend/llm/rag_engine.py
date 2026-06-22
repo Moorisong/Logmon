@@ -8,6 +8,7 @@ from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE, COUNT_PROMPT_TEMPL
 from backend.llm.guardrail import check_guardrail, GUARDRAIL_FALLBACK_MSG
 from backend.llm.reranker import rerank_documents
 from backend.llm.memory import get_conversation_context, add_conversation
+from backend.llm.utils import estimate_tokens, postprocess_noun_ending
 
 logger = logging.getLogger(__name__)
 
@@ -186,10 +187,11 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
                 question=final_question
             )
             
-            # 대략적인 토큰 크기 측정 (공백/글자 기준 간이 계산: 문자열 1글자 = 약 0.3~0.4토큰)
-            approx_tokens = len(prompt) / 2.5
-            if approx_tokens > 2000 and len(docs) > 1:
-                logger.info(f"[토큰 초과 경고] 프롬프트가 {approx_tokens:.1f} 토큰으로 2,000 기준치를 초과할 위험 감지. 가장 오래된 청크를 Drop하고 컨텍스트를 재구성합니다.")
+            # 2단계: 토큰 수 실시간 모니터링
+            approx_tokens = estimate_tokens(prompt)
+            # [Hard Ceiling 규칙]: 예측된 총 토큰 수가 1,800 토큰을 초과할 위험 감지 시
+            if approx_tokens > 1800 and len(docs) > 1:
+                logger.warning(f"[WARN] Token limit exceeded. Dropping oldest chunk... (Approx: {approx_tokens:.1f} tokens)")
                 oldest_doc = min(docs, key=get_timestamp_from_doc)
                 docs.remove(oldest_doc)
                 context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=2000)
@@ -198,6 +200,9 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
                 break
                 
         answer = await generate_completion(prompt)
+        
+        # 3단계: 출력 가드레일 (Post-processing) 명사형 종결 처리
+        answer = postprocess_noun_ending(answer)
         
         # 7. 대화 히스토리 저장
         add_conversation(user_key, question, answer)
@@ -208,7 +213,8 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         # RAG 파이프라인 전체 에러 시 SQLite Fallback으로 정규식 검색해서 출력하게 보완
         from backend.llm.client import query_sqlite_logs, generate_simulated_response
         rows = query_sqlite_logs(question)
-        return generate_simulated_response(question, rows)
+        simulated_ans = generate_simulated_response(question, rows)
+        return postprocess_noun_ending(simulated_ans)
 
 
 

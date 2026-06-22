@@ -83,11 +83,13 @@ def get_connection() -> sqlite3.Connection:
     동시성 제어를 위해 timeout 설정과 isolation_level 을 지정합니다.
     """
     try:
+        db_dir = get_db_dir()
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            
         # timeout을 주어 Database Lock 이슈 완화
         conn = sqlite3.connect(get_db_path(), timeout=10.0, isolation_level=None)
         conn.create_function("REGEXP", 2, regexp_func)
-        # 쿼리 시 dict 형태로 반환 접근을 위해 row_factory 사용 가능 (옵션)
-        # conn.row_factory = sqlite3.Row 
         return conn
     except sqlite3.Error as e:
         logger.error(f"SQLite DB 연결 실패: {e}")

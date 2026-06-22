@@ -141,6 +141,10 @@ async def upload_log(
     background_tasks.add_task(run_chroma_pipeline, log_id, data)
     background_tasks.add_task(run_capacity_check_pipeline)
     
+    # 1단계 [Pre-computed Summary 적재]: 업로드 직후 오늘 통계 미리 계산하여 적재
+    from backend.llm.utils import upsert_daily_statistics
+    background_tasks.add_task(upsert_daily_statistics, api_key)
+    
     return {
         "status": "success",
         "processed_records": 1,

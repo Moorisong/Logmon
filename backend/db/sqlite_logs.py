@@ -29,7 +29,7 @@ def check_duplicate_log(user_key: str, timestamp: str) -> bool:
 def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     """
     바인딩 쿼리(?)를 사용하여 SQL Injection을 방어하며 활동 로그를 삽입합니다.
-    반환값은 삽입된 레코드의 id (정수) 입니다.
+    삽입 완료 후, 해당 로그 정보를 Key-Value 구조화 템플릿으로 변환하여 저장합니다.
     """
     user_key = data.get("user_key")
     timestamp = data.get("timestamp")
@@ -67,8 +67,27 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
         cursor.execute(insert_query, params)
         last_row_id = cursor.lastrowid
         
+        # Key-Value 템플릿 강제 가공 (단, STATISTICS 요약 로그는 자체 포맷이 있으므로 스킵)
+        task_name = data.get("task_name", "UNKNOWN")
+        if task_name != "STATISTICS":
+            from backend.llm.utils import format_log_message
+            structured_message = format_log_message(
+                log_id=last_row_id,
+                timestamp=timestamp,
+                source=data.get("source_tool", "UNKNOWN_TOOL"),
+                log_level=data.get("event_type", "UNKNOWN_EVENT"),
+                target=task_name,
+                raw_message=data.get("raw_message")
+            )
+            cursor.execute(
+                "UPDATE ide_activity_logs SET raw_message = ? WHERE id = ?;",
+                (structured_message, last_row_id)
+            )
+            # 메모리 내 data 딕셔너리의 raw_message도 업데이트하여 호출자(Chroma DB 적재 등)에 전달되도록 함
+            data["raw_message"] = structured_message
+        
         cursor.execute("COMMIT;")
-        logger.info(f"로그 삽입 성공. ID: {last_row_id}")
+        logger.info(f"로그 삽입 및 구조화 완료. ID: {last_row_id}")
         return last_row_id
         
     except sqlite3.Error as e:

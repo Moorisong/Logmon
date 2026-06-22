@@ -113,6 +113,29 @@ Count the relevant logs in [Context] and list them EXACTLY in the format below.
 * **[디버깅 및 파이프라인 튜닝]**:
   - **컨텍스트 다이어트**: N95 CPU 타임아웃 방지를 위해 주입되는 로그 청크 리스트 최대 개수를 3개로 제약합니다.
   - **디버깅 로그 강화**: 날짜 추출 시 파싱된 기준 시간대 범위와 필터링 후 잔여 청크 개수를 로그에 명확히 남깁니다.
-  - **동적 토큰 조율**: 최종 조립 프롬프트가 Gemma 2 2B의 기준치인 2,000 토큰 초과 위험이 있을 시 가장 오래된 로그 청크를 자동으로 Drop하고 재생성하는 조율 루프를 구동합니다.
+  - **동적 토큰 조율 (Hard Ceiling)**: 최종 조립 프롬프트가 Gemma 2 2B의 한계치인 1,800 토큰 초과 위험이 있을 시 가장 오래된 로그 청크를 자동으로 Drop하고 재생성하는 조율 루프를 구동합니다. 이때 `[WARN] Token limit exceeded. Dropping oldest chunk...` 로그를 반드시 출력합니다.
+  - **[신규] 데이터 전처리 Key-Value 구조화**: Chroma DB 및 SQLite에 적재 전, 아래 템플릿 포맷으로 원본 메시지를 무조건 구조화하여 단일 청크 무결성을 확보합니다.
+    ```plaintext
+    ---
+    ID: {log_id}
+    DateTime: YYYY-MM-DD HH:MM:SS (KST)
+    Source: [VSCode / IntelliJ / Git]
+    LogLevel: [INFO / WARN / ERROR]
+    Target: [API_Scheduler / Copilot_Plugin / Build_Engine]
+    RawMessage: {원본 에러나 로그 내용}
+    ---
+    ```
+  - **[신규] Pre-computed Summary 적재**: "최초 실행 시간", "총 몇 시간 사용" 등의 수리 통계 연산 한계를 극복하기 위해 당일 통계를 미리 계산한 `[STATISTICS]` 성격의 요약 로그 데이터를 파이썬 단에서 별도로 생성 및 적재하는 파이프라인을 구동합니다.
+    * **확장된 STATISTICS 청크 규격**:
+      ```plaintext
+      [STATISTICS] [DATE: YYYY-MM-DD]
+      - Total_Usage_Time: {X} Hours
+      - Total_AI_Tokens_Used: {Y} Tokens
+      - Total_Log_Count: {Z} Cases (INFO: {I}, WARN: {W}, ERROR: {E})
+      - Top_Error_Types: [{Error_Name_1}: {Count}, {Error_Name_2}: {Count}]
+      - First_Launch_Time: {HH:MM:SS}
+      ```
+  - **[신규] 출력 가드레일 (Post-processing) 종결 어미 교정**: Gemma가 대화형 어미를 반환하는 경우를 대비하여 파이썬 정규식을 통해 `~함.`, `~요망.`, `~필요.`, `~발생.` 등 명사형 종결로 최종 변환하는 필터를 거칩니다.
+  - **[신규] Fuzzy Matching 매커니즘 보강**: 질문에서 공백을 완전히 제거한 텍스트와 초경량 정규식 패턴 분석을 결합하여 `경고 로드`, `경고로그`, `최근에발생한도커` 등의 변칙 질의를 차단하지 않고 유연하게 통과시킵니다.
 
 

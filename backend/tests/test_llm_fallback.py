@@ -77,9 +77,9 @@ async def test_rag_agent_global_fallback():
         try:
             answer = await ask_rag_agent("Pipeline crash", "test_user")
             
-            assert "안녕하세요!" in answer
+            assert "안녕" in answer
             assert "실제 저장된 로그 데이터" in answer
-            assert "Pipeline crash test message" in answer
+            assert "LogLevel: ERROR" in answer
         finally:
             if original_env is not None:
                 os.environ["LOGMON_ENV"] = original_env

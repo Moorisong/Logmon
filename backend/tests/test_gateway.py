@@ -3,8 +3,22 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
+# --- 테스트 환경 강제 분리 ---
+os.environ["LOGMON_ENV"] = "test"
+os.environ["LOGMON_DB_DIR"] = "/tmp/logmon_test_gateway_db"
+os.environ["LOGMON_CHROMA_DIR"] = "/tmp/logmon_test_gateway_chroma"
+
+from backend.db.connection import init_db
 from backend.main import app
 from backend.api.dependencies import get_allowed_api_keys
+
+@pytest.fixture(autouse=True)
+def setup_and_teardown():
+    init_db()
+    yield
+    if os.path.exists(os.environ["LOGMON_DB_DIR"]):
+        import shutil
+        shutil.rmtree(os.environ["LOGMON_DB_DIR"], ignore_errors=True)
 
 client = TestClient(app)
 
@@ -26,7 +40,11 @@ def test_static_file_serving(tmp_path):
     os.remove(test_file_path)
 
 # 2. API Key 인증 테스트 (401 방어)
-@patch.dict(os.environ, {"ALLOWED_API_KEYS": "test_key_1,test_key_2"}, clear=True)
+@patch.dict(os.environ, {
+    "ALLOWED_API_KEYS": "test_key_1,test_key_2",
+    "LOGMON_DB_DIR": "/tmp/logmon_test_gateway_db",
+    "LOGMON_CHROMA_DIR": "/tmp/logmon_test_gateway_chroma"
+})
 def test_api_key_auth():
     # 헤더 누락
     res_no_header = client.post("/api/logmon/upload", json={
@@ -41,7 +59,11 @@ def test_api_key_auth():
     assert res_invalid.status_code == 401
     
     # 설정 누락된 경우 서버 401
-    with patch.dict(os.environ, {"ALLOWED_API_KEYS": ""}, clear=True):
+    with patch.dict(os.environ, {
+        "ALLOWED_API_KEYS": "",
+        "LOGMON_DB_DIR": "/tmp/logmon_test_gateway_db",
+        "LOGMON_CHROMA_DIR": "/tmp/logmon_test_gateway_chroma"
+    }):
         res_no_config = client.post("/api/logmon/upload", json={
             "source_tool": "Cursor", "event_type": "TEST", "raw_message": "Hello"
         }, headers={"X-LogMon-API-Key": "test_key_1"})
@@ -50,7 +72,11 @@ def test_api_key_auth():
 # 3. 페이로드 손상 및 파이프라인 목업 검증 (200 OK)
 @patch('backend.api.routes.insert_activity_log')
 @patch('backend.api.routes.process_and_store_vector')
-@patch.dict(os.environ, {"ALLOWED_API_KEYS": "valid_key"}, clear=True)
+@patch.dict(os.environ, {
+    "ALLOWED_API_KEYS": "valid_key",
+    "LOGMON_DB_DIR": "/tmp/logmon_test_gateway_db",
+    "LOGMON_CHROMA_DIR": "/tmp/logmon_test_gateway_chroma"
+})
 def test_upload_pipeline(mock_process, mock_insert):
     headers = {"X-LogMon-API-Key": "valid_key"}
     
@@ -84,7 +110,11 @@ def test_upload_pipeline(mock_process, mock_insert):
     assert res_idem.json()["status"] == "skipped"
 
 @patch('backend.api.routes.get_dashboard_stats')
-@patch.dict(os.environ, {"ALLOWED_API_KEYS": "valid_key"}, clear=True)
+@patch.dict(os.environ, {
+    "ALLOWED_API_KEYS": "valid_key",
+    "LOGMON_DB_DIR": "/tmp/logmon_test_gateway_db",
+    "LOGMON_CHROMA_DIR": "/tmp/logmon_test_gateway_chroma"
+})
 def test_stats_api(mock_stats):
     headers = {"X-LogMon-API-Key": "valid_key"}
     

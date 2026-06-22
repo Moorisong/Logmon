@@ -22,9 +22,9 @@
 backend/
 └── llm/
     ├── client.py              # Ollama API 비동기 HTTP 요청 클라이언트
-    ├── stats_db.py            # SQLite 통계 정보 Upsert 위임 모듈 (300줄 한도 분리)
+    ├── stats_db.py            # SQLite 통계 정보 Upsert & 최신 통계 조회 위임 모듈 (300줄 한도 분리)
     ├── rag_engine.py          # Chroma DB 검색 결과 가공 및 컨텍스트 주입 엔진
-    ├── utils.py               # 상대 날짜 파서 및 동적 컨텍스트 압축 모듈
+    ├── utils.py               # 상대 날짜 파서, 동적 컨텍스트 압축, 어미 치환 필터 모듈
     └── prompt_templates.py    # RAG 질의 전용 최적화 프롬프트 템플릿
 ```
 
@@ -118,3 +118,7 @@ Count the relevant logs in [Context] and list them EXACTLY in the format below.
   - **동적 토큰 조율 (Sliding Window)**: 최종 조립 프롬프트가 1,800 토큰 초과 위험이 있을 시 청크를 리스트에서 통째로 드롭(drop)하지 않고, 각 청크의 `RawMessage` 문자열 길이를 뒤에서부터 자르는 슬라이딩 윈도우 방식(`manage_context_token_limit`)을 구동해 토큰 한계를 맞춥니다.
   - **[신규] 데이터 전처리 Key-Value 구조화**: Chroma DB 및 SQLite에 적재 전, Key-Value 구조로 원본 메시지를 무조건 구조화하여 단일 청크 무결성을 확보합니다.
   - **[신규] Pre-computed Summary 적재 및 통계 질의 복합 카운트 바인딩**: 당일 통계를 미리 계산한 `[STATISTICS]` 성격의 요약 로그 데이터를 파이썬 단에서 별도로 생성 및 적재(`stats_db.py`)하며, 질의 시 정규식 파싱을 통해 `Llama 3.2 1B` 모델이 레벨별 수치를 명확하게 대답에 바인딩할 수 있도록 유도 힌트를 프롬프트에 주입하고, 파싱 실패 시 기본값(INFO: 0, WARN: 0, ERROR: 0)으로 치환해 주는 방어 코드를 적용합니다.
+  - **[신규] SQLite Fallback 실제 데이터 바인딩**: Ollama 오프라인 시, 유저가 통계/토큰량/사용량 등을 질의하면 깡통 응답 매크로 대신 `stats_db.py`에 구현된 `get_latest_statistics_data`를 통해 DB의 실제 당일 누적 데이터 수치 팩트를 실시간 바인딩한 답변을 반환합니다.
+    * 포맷: `"백업 장부(SQLite) 분석 결과, 당일(YYYY-MM-DD) 누적 통계는 사용 시간: {X}시간, AI 토큰량: {Y}개로 기록되어 있음."`
+  - **[신규] 어미 치환 필터 고도화 및 예외 처리**: `postprocess_noun_ending` 정규식 치환에 룩비하인드 패턴을 도입하여 `안녕하세요`와 같은 일상 인사말이나 `필요`, `중요`, `보세요` 등 어미에 포함된 명사형 종결이 안녕요망 및 끊김 현상 없이 정상 보존되도록 구현합니다.
+  - **[신규] Ollama 11434 포트 헬스체크 및 자동 복구**: `deploy.sh` 원격 SSH 배포 단계에 포트 11434 및 `/api/tags` REST API 헬스체크 기능을 신설하여, 응답 불능 좀비 상태 감지 시 강제 프로세스 킬(`kill -9`) 후 시스템 서비스 또는 백그라운드 구동을 자동 복구하며, 복구 후 200 OK 응답이 수신될 때까지 대기(Polling)하는 견고한 인프라 안전망을 탑재합니다.

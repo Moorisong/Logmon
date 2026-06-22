@@ -133,6 +133,16 @@ def query_sqlite_logs(question: str) -> list:
 
 
 def generate_simulated_response(question: str, rows: list) -> str:
+    query_lower = question.lower()
+    is_stat_query = any(k in query_lower for k in ["통계", "시간", "토큰", "개수", "몇 개", "몇개", "몇 건", "몇건", "사용량", "count", "how many"])
+    
+    if is_stat_query:
+        from backend.llm.stats_db import get_latest_statistics_data
+        from backend.llm.utils import postprocess_noun_ending
+        stat_data = get_latest_statistics_data()
+        ans = f"백업 장부(SQLite) 분석 결과, 당일({stat_data['date_str']}) 누적 통계는 사용 시간: {stat_data['total_usage_hours']}시간, AI 토큰량: {stat_data['total_tokens']}개로 기록되어 있음."
+        return postprocess_noun_ending(ans)
+
     if not rows:
         return "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."
         

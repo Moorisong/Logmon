@@ -101,6 +101,44 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   echo -e "배포 대상 원격 경로: \e[32m\$TARGET_DIR\e[0m"
   cd "\$TARGET_DIR"
   
+  # Ollama 11434 포트 헬스체크 및 좀비 프로세스 자동 재기동
+  echo -e "\e[34m[원격] Ollama 헬스체크 및 포트 클리닝 검사 중...\e[0m"
+  PORT_ACTIVE=false
+  if nc -z localhost 11434 2>/dev/null; then
+    PORT_ACTIVE=true
+  fi
+
+  API_RESPONSE=0
+  if [ "$PORT_ACTIVE" = true ]; then
+    API_RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags || echo "000")
+  fi
+
+  if [ "$PORT_ACTIVE" = false ] || [ "$API_RESPONSE" != "200" ]; then
+    echo -e "\e[33m[원격] [경고] Ollama가 비정상 상태입니다 (포트 활성: \$PORT_ACTIVE, API 응답 코드: \$API_RESPONSE). 좀비 프로세스 청소 및 재기동을 시도합니다.\e[0m"
+    if [ "\$PORT_ACTIVE" = true ]; then
+      echo -e "\e[31m[원격] 11434 포트 좀비 프로세스 강제 킬 실행...\e[0m"
+      lsof -t -i:11434 | xargs kill -9 2>/dev/null || true
+      sleep 2
+    fi
+    echo -e "\e[34m[원격] Ollama 서비스 재기동 시작...\e[0m"
+    if systemctl is-active --quiet ollama 2>/dev/null; then
+      sudo systemctl restart ollama 2>/dev/null || (nohup ollama serve > /dev/null 2>&1 &)
+    else
+      sudo systemctl start ollama 2>/dev/null || (nohup ollama serve > /dev/null 2>&1 &)
+    fi
+    echo -e "\e[34m[원격] Ollama 200 OK 응답 대기 중...\e[0m"
+    for i in {1..10}; do
+      HEALTH_CODE=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags || echo "000")
+      if [ "\$HEALTH_CODE" = "200" ]; then
+        echo -e "\e[32m[원격] Ollama 헬스체크 성공! (API 응답 코드: 200)\e[0m"
+        break
+      fi
+      sleep 1
+    done
+  else
+    echo -e "\e[32m[원격] Ollama 서비스 정상 동작 중 (API 응답 코드: 200)\e[0m"
+  fi
+
   # 2. 최신 소스 pull
   echo -e "\e[34m[원격] Git Pull 실행 중... (브랜치: ${CURRENT_BRANCH})\e[0m"
   git fetch origin

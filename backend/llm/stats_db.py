@@ -144,3 +144,65 @@ def upsert_daily_statistics(user_key: str) -> None:
             pass
     finally:
         conn.close()
+
+def get_latest_statistics_data(user_key: str = None) -> dict:
+    """
+    SQLite 데이터베이스에서 가장 최신 STATISTICS 로그 레코드를 조회하여
+    사용시간, 토큰수 등 수치 팩트를 딕셔너리로 반환합니다.
+    """
+    from backend.db.connection import get_connection
+    default_data = {
+        "total_usage_hours": 0.0,
+        "total_tokens": 0,
+        "total_log_count": 0,
+        "count_info": 0,
+        "count_warn": 0,
+        "count_error": 0,
+        "date_str": datetime.datetime.now().strftime("%Y-%m-%d")
+    }
+    
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        query = "SELECT raw_message, timestamp FROM ide_activity_logs WHERE task_name = 'STATISTICS'"
+        params = []
+        if user_key:
+            query += " AND user_key = ?"
+            params.append(user_key)
+        query += " ORDER BY timestamp DESC LIMIT 1"
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        if row:
+            raw_message = row[0] or ""
+            timestamp = row[1] or ""
+            
+            usage_match = re.search(r"Total_Usage_Time:\s*([\d.]+)\s*Hours", raw_message)
+            tokens_match = re.search(r"Total_AI_Tokens_Used:\s*(\d+)\s*Tokens", raw_message)
+            log_count_match = re.search(
+                r"Total_Log_Count:\s*(\d+)\s*Cases\s*\(INFO:\s*(\d+),\s*WARN:\s*(\d+),\s*ERROR:\s*(\d+)\)",
+                raw_message
+            )
+            date_match = re.search(r"\[DATE:\s*([\d-]+)\]", raw_message)
+            
+            data = default_data.copy()
+            if usage_match:
+                data["total_usage_hours"] = float(usage_match.group(1))
+            if tokens_match:
+                data["total_tokens"] = int(tokens_match.group(1))
+            if log_count_match:
+                data["total_log_count"] = int(log_count_match.group(1))
+                data["count_info"] = int(log_count_match.group(2))
+                data["count_warn"] = int(log_count_match.group(3))
+                data["count_error"] = int(log_count_match.group(4))
+            if date_match:
+                data["date_str"] = date_match.group(1)
+            elif timestamp:
+                data["date_str"] = timestamp.split(" ")[0]
+                
+            return data
+    except Exception as e:
+        logger.error(f"최신 통계 쿼리 중 오류 발생: {e}")
+    finally:
+        conn.close()
+        
+    return default_data

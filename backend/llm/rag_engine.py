@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 
 import datetime
 
+def get_timestamp_from_doc(doc: str) -> datetime.datetime:
+    """로그 청크 문자열에서 타임스탬프를 파싱하여 반환합니다. 파싱 불가 시 최대 시간값을 반환합니다."""
+    match = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]", doc)
+    if match:
+        try:
+            return datetime.datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            pass
+    return datetime.datetime.max
+
 def parse_query_filters(question: str) -> tuple:
     """
     사용자 질문에서 시간대 범위(start_time, end_time), 로그 레벨(event_type), 
@@ -55,6 +65,9 @@ def parse_query_filters(question: str) -> tuple:
     elif "2030년" in q_lower:
         start_time = "2030-01-01 00:00:00"
         end_time = "2030-01-01 23:59:59"
+        
+    # [지침 B] 날짜 추출 로직 디버깅 로그 강화
+    logger.info(f"[시간 맥락 파싱] 질문: '{question}', 기준 날짜 범위: {start_time} ~ {end_time}")
         
     # 2. 에러 레벨 파싱
     event_type = ""
@@ -137,10 +150,16 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         # 4.1. [날짜 필터링 고도화] '오늘' 의도가 있다면 파이썬 단에서 엄격하게 Drop
         if any(k in question.lower() for k in ["오늘", "today", "투데이"]):
             docs = [doc for doc in docs if current_date_str in doc]
+            
+        # [지침 B] 필터링 후 남은 청크 개수 디버깅 로그 기록
+        logger.info(f"[날짜 후처리 필터 결과] 필터링 후 남은 청크 개수: {len(docs)}")
         
         # 4.2. [격리 규칙] 필터링 후 알맹이가 진짜 0건이면 여기서 튕김
         if not docs:
             return "최근 기록된 작업 로그가 존재하지 않습니다."
+            
+        # 4.3. [컨텍스트 다이어트] 최종 주입할 청크 리스트 최대 개수 3개로 제한
+        docs = docs[:3]
             
         # 리랭커를 통한 정렬 및 길이 조절 (Top-3, Max 2000자)
         context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=2000)
@@ -156,15 +175,28 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         final_question = f"[이전 대화 내역]\n{history_context}\n\n[현재 질문]\n{question}" if history_context else question
         final_question = compress_context(final_question)
             
-        # 6. 프롬프트 바인딩 및 추론
+        # 6. 프롬프트 바인딩 및 동적 조율 루프 (지침 C)
         is_count_query = any(k in question.lower() for k in ["몇 개", "몇개", "몇건", "몇 건", "count", "how many"])
         selected_template = COUNT_PROMPT_TEMPLATE if is_count_query else RAG_PROMPT_TEMPLATE
         
-        prompt = selected_template.format(
-            current_date=current_date_str,
-            context=context_str,
-            question=final_question
-        )
+        while True:
+            prompt = selected_template.format(
+                current_date=current_date_str,
+                context=context_str,
+                question=final_question
+            )
+            
+            # 대략적인 토큰 크기 측정 (공백/글자 기준 간이 계산: 문자열 1글자 = 약 0.3~0.4토큰)
+            approx_tokens = len(prompt) / 2.5
+            if approx_tokens > 2000 and len(docs) > 1:
+                logger.info(f"[토큰 초과 경고] 프롬프트가 {approx_tokens:.1f} 토큰으로 2,000 기준치를 초과할 위험 감지. 가장 오래된 청크를 Drop하고 컨텍스트를 재구성합니다.")
+                oldest_doc = min(docs, key=get_timestamp_from_doc)
+                docs.remove(oldest_doc)
+                context_str = rerank_documents(query=question, documents=docs, top_k=3, max_chars=2000)
+                context_str = compress_context(context_str)
+            else:
+                break
+                
         answer = await generate_completion(prompt)
         
         # 7. 대화 히스토리 저장
@@ -177,5 +209,6 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         from backend.llm.client import query_sqlite_logs, generate_simulated_response
         rows = query_sqlite_logs(question)
         return generate_simulated_response(question, rows)
+
 
 

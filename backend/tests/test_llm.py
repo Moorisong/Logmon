@@ -193,6 +193,10 @@ async def test_guardrail_routing():
     assert check_guardrail("안녕") is False
     assert check_guardrail("너 바보야?") is False
     assert check_guardrail("도커 에러가 왜 나지?") is True
+    assert check_guardrail("ide 실행 시간은 어떻게 돼?") is True
+    assert check_guardrail("ai 토큰량 질문") is True
+    assert check_guardrail("경고 로드 확인해줘") is True  # Fuzzy matching (로그 -> 로드)
+
 
 @pytest.mark.asyncio
 async def test_ask_rag_agent_guardrail_fallback():

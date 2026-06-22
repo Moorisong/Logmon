@@ -7,7 +7,6 @@ from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
 
 logger = logging.getLogger(__name__)
 
-# 환경변수 로드 (Fallback: localhost, 스레드 3)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 try:
     OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "3"))
@@ -17,49 +16,34 @@ except ValueError:
 MODEL_NAME = "llama3.2:1b"
 
 async def generate_completion(prompt: str) -> str:
-    """
-    Ollama 엔드포인트 전송 전, 유저의 질문 의도가 
-    SQLite 실시간 집계(SUM/COUNT) 요망 건인지 강제 사전 인터셉트합니다.
-    """
-    # 1. 프롬프트 구조에서 유저가 진짜 던진 핵심 질문만 사출
-    #    ⚠️ question이 빈 문자열이면 의도 분기를 절대 타지 않음 (교차 오염 차단)
     context, question = parse_prompt(prompt)
 
-    if question:  # 질문 추출 성공 시에만 의도 인터셉터 진입
-        # 의도 판단 키워드셋 — question 텍스트에만 적용 (prompt 전체 절대 금지)
-        IS_ERR_LOG_KEYWORDS = [
-            "에러", "오류", "정리", "error",
-            "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
-        ]
-        IS_TIME_TOKEN_KEYWORDS = [
-            "시간", "토큰", "사용량", "사용시간", "duration", "token",
-        ]
-        q_lower = question.lower()  # 반드시 question만 스캔, prompt 절대 불가
+    if question:
+        IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
+        IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token"]
+        IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업"]
+
+        q_lower = question.lower()
         is_err_log_query = any(k in q_lower for k in IS_ERR_LOG_KEYWORDS)
         is_time_token_query = any(k in q_lower for k in IS_TIME_TOKEN_KEYWORDS)
+        is_total_log_query = any(k in q_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-        # 💡 [하이브리드 강제 인터셉터] 통계 집계 의도는 Ollama 상태와 무관하게 DB 쿼리로 조기 반환
-        if is_err_log_query or is_time_token_query:
+        if is_err_log_query or is_time_token_query or is_total_log_query:
             logger.info("[인터셉터] 의도 파악 쿼리 감지 -> SQLite 집계 엔진 구동")
-            rows = query_sqlite_logs(question)  # question만 전달, prompt 오염 차단
+            rows = query_sqlite_logs(question)
             return generate_simulated_response(question, rows)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # 여기서부터 일반 RAG 로그 분석용 기본 Ollama 라우팅 파이프라인
     endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-    
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
         "stream": False,
         "options": {
-            # N95 자원 보호를 위한 스레드 제한 옵션
             "num_thread": OLLAMA_NUM_THREAD
         }
     }
     
     try:
-        # 💡 연결 타임아웃 3초, 전체 타임아웃 180초로 설정하여 N95 병목 시 오프라인 오인식 방지
         timeout_config = httpx.Timeout(180.0, connect=3.0)
         async with httpx.AsyncClient(timeout=timeout_config) as client:
             response = await client.post(endpoint, json=payload)
@@ -77,7 +61,6 @@ async def generate_completion(prompt: str) -> str:
             
         if os.getenv("LOGMON_ENV") != "test":
             logger.info("Ollama API 장애 발생. 로컬 모의 분석 텍스트 출력 (SQLite Fallback)")
-            # question 추출 실패 시 prompt 전체 오염을 막기 위해 빈 rows로 일반 응답 처리
             safe_question = question if question else ""
             rows = query_sqlite_logs(safe_question) if safe_question else []
             return generate_simulated_response(safe_question, rows)
@@ -85,20 +68,12 @@ async def generate_completion(prompt: str) -> str:
 
 
 def parse_prompt(prompt: str) -> tuple:
-    """
-    프롬프트에서 유저의 핵심 질문 문자열만 추출합니다.
-    RAG_PROMPT_TEMPLATE / COUNT_PROMPT_TEMPLATE 의 실제 마커([User Query])와
-    레거시 마커([사용자 질문]) 두 가지 포맷을 모두 지원합니다.
-    추출 실패 시 ("", "") 반환 — 절대 전체 prompt를 반환하지 않습니다.
-    """
     context = ""
     question = ""
 
-    # ── 포맷 A: 실제 프로덕션 템플릿 마커 ([Context] / [User Query]) ──
     if "[User Query]" in prompt:
         try:
             after_query = prompt.split("[User Query]")[1]
-            # <end_of_turn> 또는 줄 끝까지 추출
             q_raw = after_query.split("<end_of_turn>")[0].strip()
             question = q_raw.strip()
             if "[Context]" in prompt:
@@ -106,7 +81,6 @@ def parse_prompt(prompt: str) -> tuple:
         except Exception:
             pass
 
-    # ── 포맷 B: 레거시 마커 ([과거 로그 컨텍스트] / [사용자 질문]) ──
     if not question and "[과거 로그 컨텍스트]" in prompt and "[사용자 질문]" in prompt:
         try:
             parts = prompt.split("[과거 로그 컨텍스트]")
@@ -120,7 +94,6 @@ def parse_prompt(prompt: str) -> tuple:
             pass
 
     return context, question
-
 
 
 def query_sqlite_logs(question: str) -> list:
@@ -141,7 +114,6 @@ def query_sqlite_logs(question: str) -> list:
         conditions = []
         params = []
         
-        # 💡 [버그 수정] date('now', 'localtime') 대신 파이썬의 현재 KST 날짜 문자열을 직접 바인딩하여 시차 오류 완벽 해결!
         if is_today_query:
             today_str = datetime.now().strftime('%Y-%m-%d')
             conditions.append("strftime('%Y-%m-%d', timestamp) = ?")
@@ -186,38 +158,27 @@ def generate_simulated_response(question: str, rows: list) -> str:
     from backend.llm.stats_db import get_error_log_count, get_period_usage_stats
     import datetime as dt
 
-    # 1. 자연어 기간 파서 연동
     try:
         start_time, end_time = parse_relative_datetime(question)
     except Exception:
         start_time, end_time = None, None
 
     if not start_time or not end_time:
-        # 기본값: 오늘 하루
         now = dt.datetime.now()
         start_time = now.strftime("%Y-%m-%d 00:00:00")
         end_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
     query_lower = question.lower()
 
-    # 2. 질문 의도 분기 — 로그/에러 분기 (1순위) vs 시간/토큰 분기 (2순위) vs 일반 로그 분기 (기본)
-    # ─────────────────────────────────────────────────────────────────────────────
-    # [로그/에러 분기] 유저가 에러·로그 건수나 정리를 물을 때
-    IS_ERR_LOG_KEYWORDS = [
-        "에러", "오류", "정리", "error",
-        "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
-    ]
-    # [시간/토큰 분기] 유저가 사용 시간·토큰·사용량을 물을 때
-    IS_TIME_TOKEN_KEYWORDS = [
-        "시간", "토큰", "사용량", "사용시간", "duration", "token",
-    ]
+    IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
+    IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token"]
+    IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업"]
 
     is_err_log_query = any(k in query_lower for k in IS_ERR_LOG_KEYWORDS)
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
-    is_error_explicit = any(w in query_lower for w in ["에러", "error", "오류"])
+    is_total_log_query = any(k in query_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-    if is_err_log_query and is_error_explicit:
-        # ── [로그/에러 분기] stats_db.get_error_log_count 전용 함수 호출 ──
+    if is_err_log_query:
         err_count = get_error_log_count(start_time, end_time)
         ans = (
             f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) "
@@ -225,8 +186,7 @@ def generate_simulated_response(question: str, rows: list) -> str:
         )
         return postprocess_noun_ending(ans)
 
-    elif is_time_token_query or is_err_log_query:
-        # ── 전체/활동 로그 질문은 get_period_usage_stats 전용 함수 호출 및 데이터 바인딩 ──
+    elif is_time_token_query or is_total_log_query:
         usage = get_period_usage_stats(start_time, end_time)
         total_hours = usage["total_hours"]
         total_tokens = usage["total_tokens"]

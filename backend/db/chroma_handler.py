@@ -82,7 +82,7 @@ def get_embedding(text: str) -> List[float]:
     }
     
     try:
-        response = requests.post(url, json=payload, timeout=15.0)
+        response = requests.post(url, json=payload, timeout=60.0)
         response.raise_for_status()
         data = response.json()
         return data.get("embedding", [])

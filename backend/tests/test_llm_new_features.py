@@ -163,7 +163,7 @@ async def test_simulated_err_log_intent_returns_count_pattern():
             "has_code_block": 0
         })
         err_log_questions = [
-            "로그 정리해봐",
+            "에러 로그 정리해봐",
             "에러 몇 개야?",
             "오류 개수 알려줘",
             "에러 건수 몇 건이야?",
@@ -310,4 +310,47 @@ def test_postprocess_noun_ending_preserve_words_isolation():
     assert result2 == "디버깅해 보세요.", f"'보세요' 오치환 발생: {result2}"
     result3 = postprocess_noun_ending("확인이 필요합니다.")
     assert "필요요망" not in result3, f"'필요' 오치환 발생: {result3}"
+
+
+# 12. 타임존 및 중복 누수 교차 검증 테스트
+def test_timezone_and_duplicate_leak_cross_validation():
+    """타임존 및 중복 누수 방지 로직 교차 검증"""
+    from backend.db.sqlite_logs import insert_activity_log, check_duplicate_log
+    from backend.db.connection import get_connection
+    
+    user_key = "TZ_DUP_TEST_USER"
+    timestamp = "2026-06-22 15:30:00"
+    
+    log_data = {
+        "user_key": user_key,
+        "source_tool": "Cursor",
+        "timestamp": timestamp,
+        "event_type": "INFO",
+        "task_name": "CODING",
+        "duration_seconds": 10,
+        "input_tokens": 10,
+        "output_tokens": 10,
+        "raw_message": "Test Message",
+        "has_code_block": 0
+    }
+    
+    # 1. 첫 번째 삽입
+    first_id = insert_activity_log(log_data)
+    assert first_id is not None
+    
+    # 2. 동일한 타임스탬프로 두 번째 삽입 시도 (중복 스킵되어 None 반환해야 함)
+    second_id = insert_activity_log(log_data)
+    assert second_id is None
+    
+    # 3. 중복 확인 함수 자체도 True 반환해야 함
+    assert check_duplicate_log(user_key, timestamp) is True
+    
+    # 4. DB 커넥션이 누수 없이 닫혔는지 확인하기 위해 DB 연결 후 select가 정상 작동하는지 확인
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE user_key = ?", (user_key,))
+    count = cursor.fetchone()[0]
+    assert count == 1
+    conn.close()
+
 

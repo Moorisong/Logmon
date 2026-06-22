@@ -28,7 +28,7 @@ async def generate_completion(prompt: str) -> str:
     if question:  # 질문 추출 성공 시에만 의도 인터셉터 진입
         # 의도 판단 키워드셋 — question 텍스트에만 적용 (prompt 전체 절대 금지)
         IS_ERR_LOG_KEYWORDS = [
-            "로그", "에러", "오류", "정리", "error", "개수", "몇 개", "몇개",
+            "에러", "오류", "정리", "error",
             "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
         ]
         IS_TIME_TOKEN_KEYWORDS = [
@@ -204,7 +204,7 @@ def generate_simulated_response(question: str, rows: list) -> str:
     # ─────────────────────────────────────────────────────────────────────────────
     # [로그/에러 분기] 유저가 에러·로그 건수나 정리를 물을 때
     IS_ERR_LOG_KEYWORDS = [
-        "로그", "에러", "오류", "정리", "error", "개수", "몇 개", "몇개",
+        "에러", "오류", "정리", "error",
         "몇 건", "몇건", "건수", "수량", "총합", "집계", "count", "how many",
     ]
     # [시간/토큰 분기] 유저가 사용 시간·토큰·사용량을 물을 때
@@ -214,8 +214,9 @@ def generate_simulated_response(question: str, rows: list) -> str:
 
     is_err_log_query = any(k in query_lower for k in IS_ERR_LOG_KEYWORDS)
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
+    is_error_explicit = any(w in query_lower for w in ["에러", "error", "오류"])
 
-    if is_err_log_query:
+    if is_err_log_query and is_error_explicit:
         # ── [로그/에러 분기] stats_db.get_error_log_count 전용 함수 호출 ──
         err_count = get_error_log_count(start_time, end_time)
         ans = (
@@ -224,8 +225,8 @@ def generate_simulated_response(question: str, rows: list) -> str:
         )
         return postprocess_noun_ending(ans)
 
-    elif is_time_token_query:
-        # ── [시간/토큰 분기] stats_db.get_period_usage_stats 전용 함수 호출 ──
+    elif is_time_token_query or is_err_log_query:
+        # ── 전체/활동 로그 질문은 get_period_usage_stats 전용 함수 호출 및 데이터 바인딩 ──
         usage = get_period_usage_stats(start_time, end_time)
         total_hours = usage["total_hours"]
         total_tokens = usage["total_tokens"]

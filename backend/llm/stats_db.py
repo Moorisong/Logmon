@@ -40,7 +40,7 @@ def upsert_daily_statistics(user_key: str) -> None:
         min_timestamp = row[2]
         
         total_usage_hours = round(total_duration / 3600.0, 1)
-        first_launch_time = min_timestamp.split(" ")[1] if min_timestamp else "00:00:00"
+        first_launch_time = min_timestamp.split(" ")[1] if (min_timestamp and " " in min_timestamp) else "00:00:00"
         
         # 2. 레벨별 로그 개수 추출
         cursor.execute("""
@@ -53,17 +53,17 @@ def upsert_daily_statistics(user_key: str) -> None:
         """, (user_key,))
         level_counts = {r[0]: r[1] for r in cursor.fetchall()}
         
-        count_info = level_counts.get("INFO", 0)
+        count_info = level_counts.get("INFO", 0) + level_counts.get("LOG_DUMP", 0)
         count_warn = level_counts.get("WARNING", 0) + level_counts.get("WARN", 0)
         count_error = level_counts.get("ERROR", 0) + level_counts.get("CRITICAL", 0)
         total_log_count = sum(level_counts.values())
         
-        # 3. 에러 종류 빈도수 집계 (ERROR, CRITICAL 로그 대상)
+        # 3. 에러 종류 빈도수 집계 (ERROR, CRITICAL, LOG_DUMP 로그 대상)
         cursor.execute("""
             SELECT raw_message FROM ide_activity_logs
             WHERE user_key = ?
               AND date(timestamp) = date('now', 'localtime')
-              AND event_type IN ('ERROR', 'CRITICAL')
+              AND event_type IN ('ERROR', 'CRITICAL', 'LOG_DUMP')
               AND task_name != 'STATISTICS'
         """, (user_key,))
         error_msgs = [r[0] for r in cursor.fetchall() if r[0]]
@@ -168,7 +168,7 @@ def get_error_log_count(start_time: str, end_time: str) -> int:
             SELECT COUNT(*)
             FROM ide_activity_logs
             WHERE timestamp BETWEEN ? AND ?
-              AND event_type IN ('ERROR', 'CRITICAL')
+              AND event_type IN ('ERROR', 'CRITICAL', 'LOG_DUMP')
               AND task_name != 'STATISTICS'
             """,
             (start_time, end_time),

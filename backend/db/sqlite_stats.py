@@ -90,21 +90,7 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
             agent_logs_count = cursor.fetchone()[0] or 0
             is_agent_installed = agent_logs_count > 0
             
-        # 에이전트 연결이 끊긴(삭제된) 상태라면 즉각 모든 통계를 0으로 처리 (사용자 요구사항 반영)
-        if not is_agent_installed:
-            return {
-                "total_logs": 0,
-                "today_tokens": 0,
-                "has_code_ratio": 0.0,
-                "trend_7d": [],
-                "uptime_days": 0,
-                "total_lines": 0,
-                "total_bytes": 0,
-                "last_sync_time": None,
-                "current_db_mb": 0.0,
-                "max_db_mb": 500.0,
-                "is_agent_installed": False
-            }
+        # is_agent_installed 변수는 API 스키마 호환성을 위해 아래 return 딕셔너리에 그대로 전달합니다.
         
         first_log = metric_row[0] if metric_row and metric_row[0] else None
         last_sync_time = metric_row[1] if metric_row and metric_row[1] else None

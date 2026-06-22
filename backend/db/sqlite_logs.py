@@ -34,33 +34,33 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     user_key = data.get("user_key")
     timestamp = data.get("timestamp")
     
-    if check_duplicate_log(user_key, timestamp):
-        logger.info(f"중복된 로그 삽입 스킵: {user_key} at {timestamp}")
-        return None
-
-    insert_query = """
-        INSERT INTO ide_activity_logs (
-            user_key, source_tool, timestamp, event_type, 
-            task_name, duration_seconds, input_tokens, output_tokens, 
-            raw_message, has_code_block
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
-    
-    params = (
-        user_key,
-        data.get("source_tool", "UNKNOWN_TOOL"),
-        timestamp,
-        data.get("event_type", "UNKNOWN_EVENT"),
-        data.get("task_name", "UNKNOWN"),
-        data.get("duration_seconds", 0),
-        data.get("input_tokens", 0),
-        data.get("output_tokens", 0),
-        data.get("raw_message"),
-        data.get("has_code_block", 0)
-    )
-    
     conn = get_connection()
     try:
+        if check_duplicate_log(user_key, timestamp):
+            logger.info(f"중복된 로그 삽입 스킵: {user_key} at {timestamp}")
+            return None
+
+        insert_query = """
+            INSERT INTO ide_activity_logs (
+                user_key, source_tool, timestamp, event_type, 
+                task_name, duration_seconds, input_tokens, output_tokens, 
+                raw_message, has_code_block
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        
+        params = (
+            user_key,
+            data.get("source_tool", "UNKNOWN_TOOL"),
+            timestamp,
+            data.get("event_type", "UNKNOWN_EVENT"),
+            data.get("task_name", "UNKNOWN"),
+            data.get("duration_seconds", 0),
+            data.get("input_tokens", 0),
+            data.get("output_tokens", 0),
+            data.get("raw_message"),
+            data.get("has_code_block", 0)
+        )
+        
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
         
@@ -92,7 +92,10 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
         
     except sqlite3.Error as e:
         logger.error(f"로그 삽입 중 에러 발생: {e}")
-        conn.rollback()
+        try:
+            conn.rollback()
+        except:
+            pass
         raise
     finally:
         conn.close()
@@ -115,6 +118,7 @@ def cleanup_ttl_logs() -> list[int]:
         cursor.execute("COMMIT;")
         if deleted_ids:
             logger.info(f"SQLite 7일 TTL 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
+            vacuum_db()
     except sqlite3.Error as e:
         logger.error(f"SQLite TTL 클리닝 중 에러: {e}")
         conn.rollback()
@@ -141,6 +145,7 @@ def cleanup_old_logs(limit: int = 100) -> list[int]:
         cursor.execute("COMMIT;")
         if deleted_ids:
             logger.info(f"SQLite FIFO 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
+            vacuum_db()
     except sqlite3.Error as e:
         logger.error(f"SQLite FIFO 클리닝 중 에러: {e}")
         conn.rollback()

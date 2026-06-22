@@ -106,7 +106,7 @@ def parse_relative_datetime(question: str) -> tuple:
         elif "일주일" in question:
             days = 7
         else:
-            match = re.search(r"(?:지난|최근)?\s*(\d+)\s*일\s*(?:동안)?", question)
+            match = re.search(r"(?:지난|최근)?\s*(\d+)\s*일\s*(?:동안)?", q_clean)
             if match:
                 days = int(match.group(1))
         

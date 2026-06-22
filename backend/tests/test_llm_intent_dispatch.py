@@ -1,4 +1,5 @@
 # backend/tests/test_llm_intent_dispatch.py
+from __future__ import annotations
 # SQLite Fallback 분기 의도(Intent) 처리 검증 테스트
 # — test_llm_new_features.py 300줄 한도 준수를 위해 분리됨
 import os
@@ -100,7 +101,7 @@ async def test_err_log_intent_returns_count_format():
         _insert_error_log()
 
         err_log_questions = [
-            "로그 정리해봐",
+            "에러 로그 정리해봐",
             "에러 몇 개야?",
             "오늘 오류 개수 알려줘",
         ]
@@ -178,7 +179,7 @@ async def test_intent_dispatch_no_cross_contamination():
         _insert_usage_log()
 
         # 로그 질문 → 반드시 에러 개수 포맷
-        prompt_err = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n로그 정리해봐\n[답변]"
+        prompt_err = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n에러 로그 정리해봐\n[답변]"
         result_err = await generate_completion(prompt_err)
         assert "사용 시간:" not in result_err, f"로그 질문에 시간 응답 크로스 오염: {result_err}"
         assert "총" in result_err, f"로그 질문에 에러 개수 표현 없음: {result_err}"

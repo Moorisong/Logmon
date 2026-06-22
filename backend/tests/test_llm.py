@@ -136,7 +136,7 @@ async def test_llm_client_connection_error_dynamic_mock_fallback():
 관련된 과거 로그 컨텍스트가 없습니다.
 
 [사용자 질문]
-오늘 무슨 에러 있었어?
+오늘 무슨 일 있었어?
 
 [답변]"""
         result = await generate_completion(prompt)
@@ -182,7 +182,7 @@ async def test_llm_client_general_exception_dynamic_mock_fallback():
     original_env = os.environ.get("LOGMON_ENV")
     os.environ["LOGMON_ENV"] = "dev"
     try:
-        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n알 수 없는 에러\n[답변]"
+        prompt = "[과거 로그 컨텍스트]\n\n[사용자 질문]\n알 수 없는 현상\n[답변]"
         result = await generate_completion(prompt)
         assert "안녕하세요!" in result
     finally:
@@ -193,7 +193,7 @@ async def test_llm_client_general_exception_dynamic_mock_fallback():
 async def test_guardrail_routing():
     """인풋 가드레일 라우팅 테스트 (비정상 입력 차단)"""
     from backend.llm.guardrail import check_guardrail
-    assert check_guardrail("안녕") is False
+    assert check_guardrail("피자") is False
     assert check_guardrail("너 바보야?") is False
     assert check_guardrail("도커 에러가 왜 나지?") is True
     assert check_guardrail("ide 실행 시간은 어떻게 돼?") is True

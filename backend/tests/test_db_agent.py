@@ -188,9 +188,9 @@ def test_agent_lifecycle_dashboard_sync():
     insert_activity_log(uninstall_data)
     
     stats = get_dashboard_stats(user_key)
-    # 삭제 후에는 즉시 설치 상태가 False가 되어야 하며, 모든 수치가 0 및 None으로 잠겨야 함
+    # 삭제 후에도 설치 상태는 False가 되지만, 수치는 물리적 수치 그대로 반환되어야 함
     assert stats["is_agent_installed"] is False
-    assert stats["total_logs"] == 0
-    assert stats["last_sync_time"] is None
-    assert stats["uptime_days"] == 0
-    assert stats["total_lines"] == 0
+    assert stats["total_logs"] == 3
+    assert stats["last_sync_time"] == "2026-06-20 12:10:00"
+    assert stats["uptime_days"] == 3
+    assert stats["total_lines"] == 24

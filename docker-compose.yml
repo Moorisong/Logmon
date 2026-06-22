@@ -27,8 +27,8 @@ services:
       - OLLAMA_HOST=http://logmon-ollama:11434
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
     volumes:
-      - /home/ksh/logmon/backend:/app/backend  # ◀ [★영구 패치] 호스트의 백엔드 소스 코드를 실시간 동적 바인딩합니다!
-      - /home/ksh/logmon/data/db:/app/data
+      - /home/ksh/logmon/backend:/app/backend
+      - /home/ksh/logmon/data/db:/app/data          # ◀ 진짜 장부는 여기(/app/data)에 저장됩니다!
       - /home/ksh/logmon/data/chroma:/app/chroma_data
     networks:
       - logmon-network

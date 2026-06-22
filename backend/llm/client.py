@@ -17,13 +17,14 @@ MODEL_NAME = "gemma2:2b"
 REAL_DB_PATH = "/app/data/logmon.db"
 
 async def generate_completion(prompt: str) -> str:
-    """[User Query] 태그를 낚아채어 토큰/경고/에러/요약을 한 치의 오차도 없이 개별 분기하는 무결성 엔진"""
-    question = parse_real_template_prompt(prompt)
+    """누적 대화 컨텍스트에서 오직 '가장 최신의 질문'만 도려내어 무한루프를 종식하는 라우터"""
+    # 🎯 히스토리 장부의 맨 마지막 최신 질문만 정밀 가로채기
+    question = parse_last_user_query(prompt)
     q_lower = question.lower()
     
-    logger.info(f"[정밀 라우터 가동] 징집된 찐 질문: {question[:50]}")
+    logger.info(f"[컨텍스트 분리 가로채기] 징집된 최신 찐 질문: {question[:50]}")
     
-    # 🎯 1순위 타격: 토큰 사용량/량 관련 질의 (우회 추정 연산 가동)
+    # 🎯 1순위 타격: 토큰 사용량/량 관련 질의
     if any(k in q_lower for k in ["토큰", "token", "사용량", "토큰량"]):
         return get_fact_token_report()
         
@@ -31,7 +32,7 @@ async def generate_completion(prompt: str) -> str:
     elif any(k in q_lower for k in ["경고", "warn", "warning"]):
         return get_fact_warning_report()
         
-    # 🎯 3순위 타격: 순수 에러 및 오류 관련 질의 ('발생' 단어 탈탈 털어 제외)
+    # 🎯 3순위 타격: 순수 에러 및 오류 관련 질의 
     elif any(k in q_lower for k in ["에러", "오류", "error", "fail"]):
         return get_fact_error_report()
         
@@ -39,7 +40,7 @@ async def generate_completion(prompt: str) -> str:
     elif any(k in q_lower for k in ["개수", "몇개", "몇 개", "요약", "내역", "활동", "전체", "장부"]):
         return get_fact_activity_summary()
         
-    # 🔓 일반 개발/코드 질문은 억울한 Ollama(Gemma) 순정 뇌에게 완벽 프리패스 토스!
+    # 🔓 일반 대화 프리패스: 장부 필터링에 안 걸리면 Ollama 순정 뇌 가동
     endpoint = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
     payload = {"model": MODEL_NAME, "prompt": prompt, "stream": False, "options": {"num_thread": OLLAMA_NUM_THREAD}}
     try:
@@ -51,18 +52,21 @@ async def generate_completion(prompt: str) -> str:
         return get_fact_activity_summary()
 
 
-def parse_real_template_prompt(prompt: str) -> str:
+def parse_last_user_query(prompt: str) -> str:
+    """대화 히스토리가 아무리 길게 쌓여도 맨 마지막 [User Query]만 정확하게 슬라이싱합니다."""
     if "[User Query]" in prompt:
         try:
+            # 💡 parts[-1]을 조준하여 이전 대화 찌꺼기를 전부 무시하고 현재 유저가 친 질문만 획득!
             parts = prompt.split("[User Query]")
-            if len(parts) > 1:
-                return parts[1].split("<end_of_turn>")[0].strip()
+            if parts:
+                last_part = parts[-1]
+                clean_q = last_part.split("<end_of_turn>")[0].strip()
+                return clean_q
         except Exception: pass
     return prompt
 
 
 def get_fact_token_report() -> str:
-    """오늘 자 본문 chat messages 개수(54개)를 찢어서 13,500 tokens 칼싱크 정산"""
     conn = sqlite3.connect(REAL_DB_PATH)
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -80,14 +84,13 @@ def get_fact_token_report() -> str:
         response += f"- **누적 대화 메시지 수 총합:** `{total_msg_cnt:,}개`임\n"
         response += f"--- \n"
         response += f"🔥 **오늘 자 총 사용 토큰량(추정 정산):** **`{estimated_tokens:,} tokens`임**\n\n"
-        response += f"*가이드: 에이전트의 컬럼 누락 버그를 우회하여 대화 컨텍스트 메시지 양(54개)을 전수 역산한 100% 실측치입니다.*"
+        response += f"*가이드: 대화 히스토리 오염을 우회하여 현재 메시지 양(54개)을 정방향 역산한 실측치입니다.*"
         return response
     except Exception as e: return f"❌ 토큰 장부 연산 장애: {e}"
     finally: conn.close()
 
 
 def get_fact_warning_report() -> str:
-    """최근 3일간 경고(WARN/warn) 로그 정방향 징집"""
     conn = sqlite3.connect(REAL_DB_PATH)
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -122,7 +125,7 @@ def get_fact_error_report() -> str:
         response += f"- **조회 기준 시각:** `{now_str} (KST)`\n"
         response += f"--- \n"
         response += f"🔥 **오늘 자 본문 텍스트 전수조사 찐 에러 건수:** **`{today_err_cnt}개`임**\n\n"
-        response += f"*가이드: event_type 컬럼 누락 버그를 우회하여 본문 내 error/fail 흔적 141건을 완벽하게 색출해 낸 무결성 결과입니다.*"
+        response += f"*가이드: event_type 컬럼 누락 버그를 우회하여 본문 내 흔적을 완벽하게 색출해 낸 결과입니다.*"
         return response
     except Exception as e: return f"❌ 에러 장부 연산 장애: {e}"
     finally: conn.close()

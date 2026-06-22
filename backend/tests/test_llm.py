@@ -190,9 +190,42 @@ async def test_llm_client_general_exception_dynamic_mock_fallback():
 async def test_guardrail_routing():
     """인풋 가드레일 라우팅 테스트 (비정상 입력 차단)"""
     from backend.llm.guardrail import check_guardrail
-    assert check_guardrail("안녕") == "최근 기록된 작업 로그가 존재하지 않습니다."
-    assert check_guardrail("너 바보야?") == "최근 기록된 작업 로그가 존재하지 않습니다."
-    assert check_guardrail("도커 에러가 왜 나지?") is None
+    assert check_guardrail("안녕") is False
+    assert check_guardrail("너 바보야?") is False
+    assert check_guardrail("도커 에러가 왜 나지?") is True
+
+@pytest.mark.asyncio
+async def test_ask_rag_agent_guardrail_fallback():
+    """비기술적 질문 입력 시 변경된 가드레일 멘트가 나오는지 검증"""
+    from backend.llm.rag_engine import ask_rag_agent
+    from backend.llm.guardrail import GUARDRAIL_FALLBACK_MSG
+    
+    answer = await ask_rag_agent("오늘 저녁 메뉴 추천해줘", "test_key")
+    assert answer == GUARDRAIL_FALLBACK_MSG
+
+@pytest.mark.asyncio
+@patch('backend.llm.rag_engine.query_vectors')
+@patch('backend.llm.rag_engine.generate_completion')
+async def test_ask_rag_agent_today_date_filtering(mock_generate, mock_query):
+    """과거 날짜 로그가 오늘 날짜 필터링에 의해 올바르게 걸러지는지 검증"""
+    import datetime
+    timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+    today_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
+    
+    # Chroma DB에서 오늘 로그와 과거 로그가 함께 섞여서 반환되었다고 가정
+    mock_query.return_value = [[
+        f"[{today_str} 10:00:00] [ERROR] Docker binding error",
+        "[2026-05-03 14:00:00] [ERROR] Connection lost error"
+    ]]
+    mock_generate.return_value = "오늘 에러 분석 완료"
+    
+    answer = await ask_rag_agent("오늘 발생한 에러 분석해줘", "test_user_key")
+    
+    assert answer == "오늘 에러 분석 완료"
+    # 생성된 프롬프트 검증 - 오늘 날짜 로그는 프롬프트에 들어가고, 과거 로그는 파이썬 단에서 Drop 되어 없어야 함
+    prompt_sent = mock_generate.call_args[0][0]
+    assert f"[{today_str} 10:00:00] [ERROR] Docker binding error" in prompt_sent
+    assert "[2026-05-03 14:00:00]" not in prompt_sent
 
 @pytest.mark.asyncio
 async def test_rag_empty_context_handling():
@@ -203,3 +236,4 @@ async def test_rag_empty_context_handling():
             answer = await ask_rag_agent("에러 찾아줘", "test_key")
             assert answer == "최근 기록된 작업 로그가 존재하지 않습니다."
             mock_llm.assert_not_called()
+

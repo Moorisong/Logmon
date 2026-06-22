@@ -4,8 +4,8 @@ from typing import List
 
 from backend.db.chroma_handler import query_vectors
 from backend.llm.client import generate_completion
-from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE
-from backend.llm.guardrail import check_guardrail
+from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE, COUNT_PROMPT_TEMPLATE
+from backend.llm.guardrail import check_guardrail, GUARDRAIL_FALLBACK_MSG
 from backend.llm.reranker import rerank_documents
 from backend.llm.memory import get_conversation_context, add_conversation
 
@@ -108,9 +108,8 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
     logger.info(f"RAG 질의 시작: {question}")
     
     # 1. 인풋 가드레일 검사
-    guardrail_msg = check_guardrail(question)
-    if guardrail_msg:
-        return guardrail_msg
+    if not check_guardrail(question):
+        return GUARDRAIL_FALLBACK_MSG
         
     try:
         # 2. 스마트 프리필터링 (시간, 레벨, 키워드 쿼리 파서 작동)
@@ -131,6 +130,15 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         docs = results[0] if results and len(results) > 0 and len(results[0]) > 0 else []
         logger.info(f"Retrieved docs count: {len(docs)} for user_key: {user_key}, event_type: {event_type}, docs: {docs}")
         
+        # KST 오늘 날짜 구하기
+        timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
+        current_date_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
+        
+        # 4.1. [날짜 필터링 고도화] '오늘' 의도가 있다면 파이썬 단에서 엄격하게 Drop
+        if any(k in question.lower() for k in ["오늘", "today", "투데이"]):
+            docs = [doc for doc in docs if current_date_str in doc]
+        
+        # 4.2. [격리 규칙] 필터링 후 알맹이가 진짜 0건이면 여기서 튕김
         if not docs:
             return "최근 기록된 작업 로그가 존재하지 않습니다."
             
@@ -149,9 +157,10 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         final_question = compress_context(final_question)
             
         # 6. 프롬프트 바인딩 및 추론
-        timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
-        current_date_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
-        prompt = RAG_PROMPT_TEMPLATE.format(
+        is_count_query = any(k in question.lower() for k in ["몇 개", "몇개", "몇건", "몇 건", "count", "how many"])
+        selected_template = COUNT_PROMPT_TEMPLATE if is_count_query else RAG_PROMPT_TEMPLATE
+        
+        prompt = selected_template.format(
             current_date=current_date_str,
             context=context_str,
             question=final_question
@@ -168,4 +177,5 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         from backend.llm.client import query_sqlite_logs, generate_simulated_response
         rows = query_sqlite_logs(question)
         return generate_simulated_response(question, rows)
+
 

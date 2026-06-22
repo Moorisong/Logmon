@@ -40,7 +40,8 @@ backend/
    - **이벤트 타입 분류**: 로그 덤프(`LOG_DUMP`) 적재 시, 각 청크의 본문 텍스트 내 키워드를 분석하여 `[error]` 등의 키워드가 있으면 `event_type` 메타데이터를 `ERROR` 또는 `WARNING`으로 분류하여 저장합니다.
    - **날짜 필터링**: 사용자 질문에 '오늘', 'today', '투데이' 등의 오늘 날짜 관련 검색 의도가 발견되면, KST 로컬 타임존 기준으로 오늘 00:00:00 이후에 등록된 로그만 검색할 수 있도록 `timestamp` 메타데이터 조건(`$gte`)을 필터링 쿼리에 복합(`$and`)으로 결합하여 쿼리합니다.
    - **[추가] 쿼리 파서(Query Parser) 및 후처리 필터링**: 질문 텍스트에서 시간대 범위('5분', '30분', '오전 10시', '새벽', '어제', '일주일'), 로그 레벨('Error', 'Warning', 'Critical'), 그리고 기술 키워드('Git', 'Connection', 'DB', 'Build' 등)를 정교하게 추출하여 `query_vectors` API의 후처리(Post-filtering) 필터링에 결합해 RAG 컨텍스트 무결성을 확보합니다.
-   - **[추가] Pre-stage 가드레일 필터링**: Chroma DB 쿼리를 돌리기 전(Pre-stage) 단계에서, 질문 텍스트 내에 개발/로그 관련 핵심 기술 키워드(한글/영문)가 아예 포함되어 있지 않은 경우, 즉시 `"최근 기록된 작업 로그가 존재하지 않습니다."`를 반환하도록 설계하여 엉뚱한 로그가 유입되어 발생하는 프롬프트 오류(안티그래비티 현상)를 선제 방어합니다.
+   - **[추가] Pre-stage 가드레일 필터링**: Chroma DB 쿼리를 돌리기 전(Pre-stage) 단계에서, 질문 텍스트 내에 개발/로그 관련 핵심 기술 키워드(한글/영문)가 아예 포함되어 있지 않은 경우, 즉시 `"죄송합니다. 저는 Logmon 시스템 로그 및 장애 분석 전용 AI 에이전트입니다. 개발 및 로그 관련 질문에만 답변할 수 있습니다."`를 반환하도록 설계하여 엉뚱한 로그가 유입되어 발생하는 프롬프트 오류(안티그래비티 현상)를 선제 방어합니다.
+   - **[격리] 검색 결과 없음 메시지 분리**: 가드레일은 기술 질문에만 동작하며, RAG 쿼리 및 파이썬 날짜 필터링을 거쳤으나 실제 검색 결과가 0건일 때는 `"최근 기록된 작업 로그가 존재하지 않습니다."`를 출력하도록 철저하게 격리하여 반환합니다.
 
 
 #### 3단계: 프롬프트 주입 및 답변 생성
@@ -61,6 +62,33 @@ RAG_PROMPT_TEMPLATE = """<start_of_turn>user
 - Strict Rule 2: All sentences must end in a noun or noun phrase (명사형 종결: '~함', '~발생', '~요망', '~원본]').
 - Strict Rule 3: Output ONLY the defined Markdown formats based ONLY on the provided [Context].
 - Strict Rule 4: If [Context] is empty, contains no logs, or the user query is unrelated to system logs (e.g., weather, food, general chat), output EXACTLY this phrase and STOP immediately: "최근 기록된 작업 로그가 존재하지 않습니다."
+
+[Context]
+{context}
+
+[User Query]
+{question}
+<end_of_turn>
+<start_of_turn>model
+"""
+
+COUNT_PROMPT_TEMPLATE = """<start_of_turn>user
+[System Information]
+- Current Server Time (KST): {current_date}
+
+[Restrictions]
+- Role: Machine Log Counter.
+- Restrictions: STRICTLY NO greetings, NO explanations, NO polite endings. Output ONLY the defined Markdown format below based ONLY on the [Context].
+- Ending: All sentences must end in a noun or noun phrase (명사형 종결).
+
+[Task]
+Count the relevant logs in [Context] and list them EXACTLY in the format below.
+
+[Format]
+### 📊 분석 결과
+- 통계: 에러 총 [X]개 발생
+- 내역:
+  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
 
 [Context]
 {context}

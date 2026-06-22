@@ -1,26 +1,15 @@
-from typing import Optional
+# backend/llm/guardrail.py
 
-# 로그 분석 핵심 키워드 리스트 (가드레일 우회용)
 DEV_KEYWORDS = {
-    # 영어 기술 키워드 (소문자 변환 후 비교 필수)
-    "error", "warning", "warn", "log", "db", "git", "docker", "port", "binding", "connection", "critical", "exception", "fail", "sqlite", "chroma", "build", "host",
-    # 한글 기술 키워드
-    "에러", "오류", "경고", "로그", "디비", "깃", "도커", "포트", "바인딩", "커넥션", "문제", "해결", "작업", "실패", "기록", "커밋", "빌드", "호스트"
+    "error", "warning", "log", "db", "git", "docker", "port", "binding", "connection", "critical", "exception",
+    "에러", "오류", "경고", "로그", "디비", "깃", "도커", "포트", "바인딩", "커넥션", "문제", "해결", "작업"
 }
 
-def check_guardrail(question: str) -> Optional[str]:
-    """
-    질문에 개발/로그 관련 키워드가 하나도 없으면 즉시 RAG 파이프라인 우회 응답을 반환합니다.
-    """
-    clean_q = question.strip().lower()
-    
-    # 개발/로그 관련 핵심 키워드가 하나라도 포함되어 있는지 검사
-    if any(keyword in clean_q for keyword in DEV_KEYWORDS):
-        if len(clean_q) < 2:
-            return "질문이 너무 짧습니다. 분석하고 싶은 로그나 에러에 대해 구체적으로 말씀해 주세요."
-        return None
-        
-    # 기술 키워드가 아예 없는 경우: 즉시 차단 메시지 반환
-    return "최근 기록된 작업 로그가 존재하지 않습니다."
+GUARDRAIL_FALLBACK_MSG = "죄송합니다. 저는 Logmon 시스템 로그 및 장애 분석 전용 AI 에이전트입니다. 개발 및 로그 관련 질문에만 답변할 수 있습니다."
+
+def check_guardrail(question: str) -> bool:
+    q_lower = question.lower()
+    return any(keyword in q_lower for keyword in DEV_KEYWORDS)
+
 
 

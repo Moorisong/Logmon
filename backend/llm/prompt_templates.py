@@ -21,5 +21,33 @@ RAG_PROMPT_TEMPLATE = """<start_of_turn>user
 <start_of_turn>model
 """
 
+COUNT_PROMPT_TEMPLATE = """<start_of_turn>user
+[System Information]
+- Current Server Time (KST): {current_date}
+
+[Restrictions]
+- Role: Machine Log Counter.
+- Restrictions: STRICTLY NO greetings, NO explanations, NO polite endings. Output ONLY the defined Markdown format below based ONLY on the [Context].
+- Ending: All sentences must end in a noun or noun phrase (명사형 종결).
+
+[Task]
+Count the relevant logs in [Context] and list them EXACTLY in the format below.
+
+[Format]
+### 📊 분석 결과
+- 통계: 에러 총 [X]개 발생
+- 내역:
+  * [YYYY-MM-DD HH:MM:SS] [로그 메시지 원본]
+
+[Context]
+{context}
+
+[User Query]
+{question}
+<end_of_turn>
+<start_of_turn>model
+"""
+
 ERROR_FALLBACK_MESSAGE = "지금 AI 엔진 서비스가 잠시 쉬고 있어요."
+
 

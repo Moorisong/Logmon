@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://logmon-ollama:11434")
 try:
-    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "2")) # N95 안정성 확보를 위해 스레드 2로 제한
+    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "2")) # N95 서버 안정성을 위해 스레드 2로 제한
 except ValueError:
     OLLAMA_NUM_THREAD = 2
 
@@ -20,18 +20,29 @@ async def generate_completion(prompt: str) -> str:
     context, question = parse_prompt(prompt)
 
     if question:
-        # 최상단 관문 키워드 격리 (교차 오염 완전 차단)
+        # 겹치지 않게 명확하게 격리한 키워드셋
         IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
-        IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token"]
-        IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업"]
+        IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token", "얼마나"]
+        IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업", "로그 개수"]
 
         q_lower = question.lower()
         is_err_log_query = any(k in q_lower for k in IS_ERR_LOG_KEYWORDS)
         is_time_token_query = any(k in q_lower for k in IS_TIME_TOKEN_KEYWORDS)
         is_total_log_query = any(k in q_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-        if is_err_log_query or is_time_token_query or is_total_log_query:
-            logger.info("[인터셉터] 통계 및 집계 의도 감지 -> 즉시 로컬 백업 장부 엔진 구동")
+        # [교정] 오매핑 납치 차단을 위해 라우팅 우선순위를 철저하게 재정렬
+        if is_time_token_query:
+            logger.info("[인터셉터] 1순위: 시간 및 토큰 누적 통계 분기 가동")
+            rows = query_sqlite_logs(question)
+            return generate_simulated_response(question, rows)
+            
+        elif is_err_log_query:
+            logger.info("[인터셉터] 2순위: 에러 명시 질의 분기 가동")
+            rows = query_sqlite_logs(question)
+            return generate_simulated_response(question, rows)
+            
+        elif is_total_log_query:
+            logger.info("[인터셉터] 3순위: 전체 활동 로그 수량 분기 가동")
             rows = query_sqlite_logs(question)
             return generate_simulated_response(question, rows)
 
@@ -117,20 +128,29 @@ def generate_simulated_response(question: str, rows: list) -> str:
     query_lower = question.lower()
 
     IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
-    IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token"]
-    IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업"]
+    IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token", "얼마나"]
+    IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업", "로그 개수"]
 
     is_err_log_query = any(k in query_lower for k in IS_ERR_LOG_KEYWORDS)
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
     is_total_log_query = any(k in query_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
-    # 1순위: 에러 명시 질의 분기
-    if is_err_log_query:
+    # 응답 사출부도 인터셉터와 1:1 싱크로율로 우선순위 완전 정렬
+    # 1순위: 순수 시간 및 토큰 누적 통계 분기
+    if is_time_token_query:
+        usage = get_period_usage_stats(start_time, end_time)
+        total_hours = usage["total_hours"]
+        total_tokens = usage["total_tokens"]
+        ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
+        return postprocess_noun_ending(ans)
+
+    # 2순위: 에러 명시 질의 분기
+    elif is_err_log_query:
         err_count = get_error_log_count(start_time, end_time)
         ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 발생한 에러 로그는 총 {err_count}개임."
         return postprocess_noun_ending(ans)
 
-    # 2순위: 개수/수량/전체 장부 질의 분기 (시간/토큰과 철저히 격리)
+    # 3순위: 개수/수량/전체 장부 질의 분기
     elif is_total_log_query:
         from backend.db.connection import get_connection
         conn = get_connection()
@@ -141,14 +161,6 @@ def generate_simulated_response(question: str, rows: list) -> str:
         finally:
             conn.close()
         ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 유입된 실제 전체 활동 로그 개수는 총 {total_count}개임."
-        return postprocess_noun_ending(ans)
-
-    # 3순위: 순수 시간 및 토큰 누적 통계 분기
-    elif is_time_token_query:
-        usage = get_period_usage_stats(start_time, end_time)
-        total_hours = usage["total_hours"]
-        total_tokens = usage["total_tokens"]
-        ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
         return postprocess_noun_ending(ans)
 
     return "안녕하세요! 상세 로그 분석을 원하시면 '에러 개수', '전체 로그 몇개', '사용 시간' 등 명확한 키워드로 질문해 요망."

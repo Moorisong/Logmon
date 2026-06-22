@@ -18,7 +18,16 @@ REMOTE_PROJECT_DIR="/home/ksh/logmon"      # 홈서버 내 프로젝트 절대 �
 DEFAULT_COMMIT_MSG="deploy: auto-deploy update" # 기본 커밋 메시지
 # --------------------------------------------------
 
+# 인자 확인 (도커 캐시 무력화 옵션)
+NO_CACHE_FLAG=""
+for arg in "$@"; do
+    if [ "$arg" == "--no-cache" ]; then
+        NO_CACHE_FLAG="--no-cache"
+    fi
+done
+
 set -e # 에러 발생 시 즉시 실행 중단
+
 
 # 색상 정의
 GREEN='\033[0;32m'
@@ -147,7 +156,12 @@ ssh -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" << EOF
   
   # 3. Docker Compose 빌드 및 실행
   echo -e "\e[34m[원격] Docker Compose 빌드 및 무중단 재빌드 시작...\e[0m"
-  docker compose up -d --build
+  if [ -n "${NO_CACHE_FLAG}" ]; then
+    echo -e "\e[33m[원격] 빌드 캐시를 사용하지 않고 재빌드 진행 중 (--no-cache)...\e[0m"
+    docker compose up -d --build --no-cache
+  else
+    docker compose up -d --build
+  fi
   
   echo -e "\e[32m=== 원격 서버 배포 성공 완료 ===\e[0m\n"
 EOF

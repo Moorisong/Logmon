@@ -7,18 +7,20 @@ from backend.llm.prompt_templates import ERROR_FALLBACK_MESSAGE
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://logmon-ollama:11434")
 try:
-    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "3"))
+    OLLAMA_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "2")) # N95 안정성 확보를 위해 스레드 2로 제한
 except ValueError:
-    OLLAMA_NUM_THREAD = 3
+    OLLAMA_NUM_THREAD = 2
 
 MODEL_NAME = "llama3.2:1b"
 
 async def generate_completion(prompt: str) -> str:
+    """Ollama 전송 전 핵심 집계 쿼리 여부를 선제 인터셉트합니다."""
     context, question = parse_prompt(prompt)
 
     if question:
+        # 최상단 관문 키워드 격리 (교차 오염 완전 차단)
         IS_ERR_LOG_KEYWORDS = ["에러", "오류", "error", "critical"]
         IS_TIME_TOKEN_KEYWORDS = ["시간", "토큰", "사용량", "사용시간", "duration", "token"]
         IS_TOTAL_LOG_KEYWORDS = ["몇 개", "몇개", "건수", "수량", "총합", "집계", "count", "전체", "활동", "작업"]
@@ -29,7 +31,7 @@ async def generate_completion(prompt: str) -> str:
         is_total_log_query = any(k in q_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
         if is_err_log_query or is_time_token_query or is_total_log_query:
-            logger.info("[인터셉터] 의도 파악 쿼리 감지 -> SQLite 집계 엔진 구동")
+            logger.info("[인터셉터] 통계 및 집계 의도 감지 -> 즉시 로컬 백업 장부 엔진 구동")
             rows = query_sqlite_logs(question)
             return generate_simulated_response(question, rows)
 
@@ -39,7 +41,8 @@ async def generate_completion(prompt: str) -> str:
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_thread": OLLAMA_NUM_THREAD
+            "num_thread": OLLAMA_NUM_THREAD,
+            "stop": ["<start_of_turn>", "<end_of_turn>", "\n\n"]
         }
     }
     
@@ -50,110 +53,53 @@ async def generate_completion(prompt: str) -> str:
             response.raise_for_status()
             data = response.json()
             return data.get("response", "")
-            
-    except (httpx.TimeoutException, httpx.RequestError, Exception) as e:
-        if isinstance(e, httpx.TimeoutException):
-            logger.error("Ollama API 타임아웃 발생 (N95 과부하 또는 모델 로딩 지연)")
-        elif isinstance(e, httpx.RequestError):
-            logger.error(f"Ollama API 연결 실패 (서버 다운): {e}")
-        else:
-            logger.error(f"Ollama API 알 수 없는 에러: {e}")
-            
-        if os.getenv("LOGMON_ENV") != "test":
-            logger.info("Ollama API 장애 발생. 로컬 모의 분석 텍스트 출력 (SQLite Fallback)")
-            safe_question = question if question else ""
-            rows = query_sqlite_logs(safe_question) if safe_question else []
-            return generate_simulated_response(safe_question, rows)
-        return ERROR_FALLBACK_MESSAGE
+    except Exception as e:
+        logger.error(f"Ollama 본진 통신 실패 (Fallback 구동): {e}")
+        safe_question = question if question else ""
+        rows = query_sqlite_logs(safe_question) if safe_question else []
+        return generate_simulated_response(safe_question, rows)
 
 
 def parse_prompt(prompt: str) -> tuple:
-    context = ""
-    question = ""
-
+    context, question = "", ""
     if "[User Query]" in prompt:
         try:
             after_query = prompt.split("[User Query]")[1]
-            q_raw = after_query.split("<end_of_turn>")[0].strip()
-            question = q_raw.strip()
+            question = after_query.split("<end_of_turn>")[0].strip()
             if "[Context]" in prompt:
                 context = prompt.split("[Context]")[1].split("[User Query]")[0].strip()
-        except Exception:
-            pass
-
-    if not question and "[과거 로그 컨텍스트]" in prompt and "[사용자 질문]" in prompt:
-        try:
-            parts = prompt.split("[과거 로그 컨텍스트]")
-            if len(parts) > 1:
-                subparts = parts[1].split("[사용자 질문]")
-                if len(subparts) > 1:
-                    context = subparts[0].strip()
-                    sub_q = subparts[1].split("[답변]")
-                    question = sub_q[0].strip()
-        except Exception:
-            pass
-
+        except Exception: pass
     return context, question
 
 
 def query_sqlite_logs(question: str) -> list:
     from backend.db.connection import get_connection
-    
-    clean_question = question
-    for word in ["오늘", "내가", "제일", "무슨", "일", "있었지", "질문", "대해", "알려줘", "분석", "해줘", "했어", "했지", "한거", "한거지", "어떻게"]:
-        clean_question = clean_question.replace(word, " ")
-    
-    keywords = [k.strip() for k in clean_question.split() if len(k.strip()) >= 1]
-    
     conn = get_connection()
     try:
         cursor = conn.cursor()
         is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
-        
         query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs"
         conditions = []
         params = []
         
         if is_today_query:
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            conditions.append("strftime('%Y-%m-%d', timestamp) = ?")
-            params.append(today_str)
+            conditions.append("date(timestamp) = date('now', 'localtime')")
             
-        if keywords:
-            escaped_kws = [re.escape(kw) for kw in keywords if kw]
-            if escaped_kws:
-                pattern = "|".join(escaped_kws)
-                conditions.append("(raw_message REGEXP ? OR task_name REGEXP ? OR event_type REGEXP ? OR source_tool REGEXP ?)")
-                params.extend([pattern, pattern, pattern, pattern])
-                
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-            
         query += " ORDER BY timestamp DESC LIMIT 10"
         
         cursor.execute(query, params)
-        rows = cursor.fetchall()
-        
-        if not rows and is_today_query:
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs WHERE strftime('%Y-%m-%d', timestamp) = ? ORDER BY timestamp DESC LIMIT 10"
-            cursor.execute(query, [today_str])
-            rows = cursor.fetchall()
-            
-        if not rows:
-            query = "SELECT source_tool, timestamp, event_type, task_name, raw_message FROM ide_activity_logs ORDER BY timestamp DESC LIMIT 5"
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            
-        return rows
+        return cursor.fetchall()
     except Exception as e:
-        logger.error(f"Error querying SQLite for fallback: {e}")
+        logger.error(f"SQLite 조회 에러: {e}")
         return []
     finally:
         conn.close()
 
 
 def generate_simulated_response(question: str, rows: list) -> str:
+    """장부 데이터를 기반으로 오차 없는 정확한 숏폼 정답을 바인딩합니다."""
     from backend.llm.utils import parse_relative_datetime, postprocess_noun_ending
     from backend.llm.stats_db import get_error_log_count, get_period_usage_stats
     import datetime as dt
@@ -178,122 +124,31 @@ def generate_simulated_response(question: str, rows: list) -> str:
     is_time_token_query = any(k in query_lower for k in IS_TIME_TOKEN_KEYWORDS)
     is_total_log_query = any(k in query_lower for k in IS_TOTAL_LOG_KEYWORDS)
 
+    # 1순위: 에러 명시 질의 분기
     if is_err_log_query:
         err_count = get_error_log_count(start_time, end_time)
-        ans = (
-            f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) "
-            f"내 발생한 에러 로그는 총 {err_count}개임."
-        )
+        ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 발생한 에러 로그는 총 {err_count}개임."
         return postprocess_noun_ending(ans)
 
-    elif is_time_token_query or is_total_log_query:
+    # 2순위: 개수/수량/전체 장부 질의 분기 (시간/토큰과 철저히 격리)
+    elif is_total_log_query:
+        from backend.db.connection import get_connection
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE timestamp BETWEEN ? AND ? AND task_name != 'STATISTICS'", (start_time, end_time))
+            total_count = cursor.fetchone()[0] or 0
+        finally:
+            conn.close()
+        ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 내 유입된 실제 전체 활동 로그 개수는 총 {total_count}개임."
+        return postprocess_noun_ending(ans)
+
+    # 3순위: 순수 시간 및 토큰 누적 통계 분기
+    elif is_time_token_query:
         usage = get_period_usage_stats(start_time, end_time)
         total_hours = usage["total_hours"]
         total_tokens = usage["total_tokens"]
-        ans = (
-            f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) "
-            f"누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
-        )
+        ans = f"백업 장부(SQLite) 분석 결과, 지정 기간({start_time} ~ {end_time}) 누적 통계는 사용 시간: {total_hours}시간, AI 토큰량: {total_tokens}개로 기록되어 있음."
         return postprocess_noun_ending(ans)
 
-    if not rows:
-        return "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이며, 데이터베이스에 등록된 활동 로그가 없습니다."
-        
-    errors = []
-    warnings = []
-    general = []
-    
-    for row in rows:
-        source_tool, timestamp, event_type, task_name, raw_message = row
-        raw_msg_lower = (raw_message or "").lower()
-        
-        is_err = "error" in raw_msg_lower or "fail" in raw_msg_lower or "exception" in raw_msg_lower or event_type == "ERROR"
-        is_warn = "warning" in raw_msg_lower or "warn" in raw_msg_lower or event_type == "WARNING"
-        
-        msg_summary = (raw_message or "").strip()
-        if len(msg_summary) > 120:
-            lines = msg_summary.split("\n")
-            found_line = ""
-            for line in lines:
-                if any(w in line.lower() for w in ["error", "fail", "exception", "warning", "enoent"]):
-                    found_line = line.strip()
-                    break
-            if found_line:
-                msg_summary = found_line
-            else:
-                msg_summary = lines[0].strip() + "..."
-                
-        msg_summary = msg_summary[:150]
-        
-        log_info = {
-            "tool": source_tool,
-            "time": timestamp,
-            "type": event_type,
-            "task": task_name,
-            "message": msg_summary
-        }
-        
-        if is_err:
-            errors.append(log_info)
-        elif is_warn:
-            warnings.append(log_info)
-        else:
-            general.append(log_info)
-            
-    query_lower = question.lower()
-    if "치킨" in query_lower and not any("치킨" in (str(r[4]) or "").lower() for r in rows):
-        return "최근 기록된 작업 로그가 존재하지 않습니다."
-        
-    if "시간" in query_lower or "언제" in query_lower:
-        if errors:
-            return f"백업 장부(SQLite) 분석 결과, 해당 에러가 발생한 정확한 시간은 **[{errors[0]['time']}]** 입니다."
-        elif warnings:
-            return f"백업 장부(SQLite) 분석 결과, 해당 경고가 발생한 정확한 시간은 **[{warnings[0]['time']}]** 입니다."
-            
-    response = "안녕하세요! 현재 로컬 Ollama(llama3.2:1b) 서비스가 오프라인 상태이지만, 실제 저장된 로그 데이터를 분석하여 답변해 드려요.\n\n"
-    
-    is_today_query = any(w in question for w in ["오늘", "투데이", "today"])
-    
-    if is_today_query:
-        response += "**[오늘의 주요 활동 및 로그 분석 결과]**\n\n"
-    else:
-        response += "**[과거 활동 및 로그 검색 결과]**\n\n"
-        
-    if errors:
-        response += f"**[에러 및 실패 내역 ({len(errors)}건)]**\n"
-        for err in errors[:5]:
-            response += f"- [{err['time']}] **{err['tool']}**에서 에러가 발생했어요:\n  `{err['message']}`\n"
-        response += "\n"
-        
-    if warnings:
-        response += f"**[경고 내역 ({len(warnings)}건)]**\n"
-        for warn in warnings[:5]:
-            response += f"- [{warn['time']}] **{warn['tool']}**:\n  `{warn['message']}`\n"
-        response += "\n"
-        
-    if general:
-        response += f"**[일반 활동 내역 ({len(general)}건)]**\n"
-        for gen in general[:5]:
-            task_str = f" (작업: {gen['task']})" if gen['task'] != "UNKNOWN" else ""
-            response += f"- [{gen['time']}] **{gen['tool']}**{task_str}: `{gen['message']}`\n"
-        response += "\n"
-        
-    if errors:
-        response += "**[추천 조치]**:\n"
-        for err in errors:
-            msg = err['message'].lower()
-            if "enoent" in msg or "no such file" in msg:
-                response += "- 파일이나 디렉토리 경로가 올바른지 확인해 보세요.\n"
-                break
-            elif "connection refused" in msg or "max retries exceeded" in msg or "httpconnection" in msg:
-                response += "- 외부 서비스나 API 서버(예: Ollama)가 실행 중인지 확인해 보세요.\n"
-                break
-            elif "database" in msg or "sqlite" in msg or "pool" in msg:
-                response += "- 데이터베이스 연결 풀 크기 설정이나 데이터베이스 파일 접근 권한을 확인해 보세요.\n"
-                break
-        else:
-            response += "- 위 발생한 에러 메시지의 스택 트레이스나 예외 원인을 디버깅해 보세요.\n"
-    else:
-        response += "**[로그몬의 추천]**:\n- 특별한 에러가 발견되지 않아 아주 순조롭게 작업이 진행되지 않는 것 같아요! 화이팅이에요!\n"
-        
-    return response.strip()
+    return "안녕하세요! 상세 로그 분석을 원하시면 '에러 개수', '전체 로그 몇개', '사용 시간' 등 명확한 키워드로 질문해 요망."

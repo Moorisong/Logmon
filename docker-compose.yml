@@ -28,6 +28,7 @@ services:
       - OLLAMA_HOST=http://logmon-ollama:11434
       - LLM_MODEL=llama3.2:1b 
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
+      - ANONYMIZED_TELEMETRY=False
     volumes:
       - /home/ksh/logmon/backend:/app/backend
       - /home/ksh/logmon/data/db:/app/data

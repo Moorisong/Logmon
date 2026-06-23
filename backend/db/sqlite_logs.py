@@ -1,16 +1,13 @@
 import sqlite3
 import logging
 from typing import Dict, Any, Optional
+import re
 
 from backend.db.connection import get_connection
 
 logger = logging.getLogger(__name__)
 
 def check_duplicate_log(user_key: str, timestamp: str) -> bool:
-    """
-    멱등성 보장을 위해 동일한 user_key와 timestamp를 가진 로그가 존재하는지 확인합니다.
-    존재하면 True, 없으면 False를 반환합니다.
-    """
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -18,27 +15,45 @@ def check_duplicate_log(user_key: str, timestamp: str) -> bool:
             "SELECT 1 FROM ide_activity_logs WHERE user_key = ? AND timestamp = ? LIMIT 1;",
             (user_key, timestamp)
         )
-        result = cursor.fetchone()
-        return bool(result)
-    except sqlite3.Error as e:
-        logger.error(f"중복 확인 중 에러 발생: {e}")
-        return False
+        return bool(cursor.fetchone())
     finally:
         conn.close()
 
 def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
-    """
-    바인딩 쿼리(?)를 사용하여 SQL Injection을 방어하며 활동 로그를 삽입합니다.
-    삽입 완료 후, 해당 로그 정보를 Key-Value 구조화 템플릿으로 변환하여 저장합니다.
-    """
+    logger.info(f"🚨 [수신된 원본 데이터] IDE 에이전트 페이로드: {data}")
+
     user_key = data.get("user_key")
     timestamp = data.get("timestamp")
     
+    task_name = str(data.get("task_name") or "UNKNOWN_TASK").strip()
+    event_type = data.get("event_type") or "INFO"
+    raw_msg = str(data.get("raw_message") or "")
+    
+    # --- [Auto-Discovery 강화] 터미널 명령어 완전 추적 ---
+    if task_name.upper() in ["UNKNOWN_TASK", "UNKNOWN", "NONE", "NULL", ""]:
+        raw_lower = raw_msg.lower()
+        
+        # 정규식을 통해 [Terminal] Command completed: 뒷부분을 강제로 추출
+        terminal_match = re.search(r"\[terminal\] command completed:\s*(git\s+[a-z]+)", raw_lower)
+        
+        if terminal_match:
+            # 예: "git commit", "git push" 등 정확한 명령어만 추출
+            task_name = terminal_match.group(1).strip()
+        elif "git commit" in raw_lower:
+            task_name = "git commit"
+        elif "git push" in raw_lower:
+            task_name = "git push"
+        elif "git pull" in raw_lower:
+            task_name = "git pull"
+        elif "error" in raw_lower or "exception" in raw_lower:
+            task_name = "error_log"
+            
+    data["task_name"] = task_name
+    enriched_message = f"[ACTION: {task_name}] {raw_msg}"
+
     conn = get_connection()
     try:
-        if check_duplicate_log(user_key, timestamp):
-            logger.info(f"중복된 로그 삽입 스킵: {user_key} at {timestamp}")
-            return None
+        if check_duplicate_log(user_key, timestamp): return None
 
         insert_query = """
             INSERT INTO ide_activity_logs (
@@ -49,82 +64,59 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
         """
         
         params = (
-            user_key,
-            data.get("source_tool", "UNKNOWN_TOOL"),
-            timestamp,
-            data.get("event_type", "UNKNOWN_EVENT"),
-            data.get("task_name", "UNKNOWN"),
-            data.get("duration_seconds", 0),
-            data.get("input_tokens", 0),
-            data.get("output_tokens", 0),
-            data.get("raw_message"),
-            data.get("has_code_block", 0)
+            user_key, data.get("source_tool", "UNKNOWN_TOOL"), timestamp,
+            event_type, task_name, data.get("duration_seconds", 0),
+            data.get("input_tokens", 0), data.get("output_tokens", 0),
+            enriched_message, data.get("has_code_block", 0)
         )
         
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
-        
         cursor.execute(insert_query, params)
         last_row_id = cursor.lastrowid
         
-        # Key-Value 템플릿 강제 가공 (단, STATISTICS 요약 로그는 자체 포맷이 있으므로 스킵)
-        task_name = data.get("task_name", "UNKNOWN")
         if task_name != "STATISTICS":
             from backend.llm.utils import format_log_message
             structured_message = format_log_message(
-                log_id=last_row_id,
-                timestamp=timestamp,
+                log_id=last_row_id, timestamp=timestamp,
                 source=data.get("source_tool", "UNKNOWN_TOOL"),
-                log_level=data.get("event_type", "UNKNOWN_EVENT"),
-                target=task_name,
-                raw_message=data.get("raw_message")
+                log_level=event_type, target=task_name,
+                raw_message=enriched_message
             )
             cursor.execute(
                 "UPDATE ide_activity_logs SET raw_message = ? WHERE id = ?;",
                 (structured_message, last_row_id)
             )
-            # 메모리 내 data 딕셔너리의 raw_message도 업데이트하여 호출자(Chroma DB 적재 등)에 전달되도록 함
             data["raw_message"] = structured_message
         
         cursor.execute("COMMIT;")
-        logger.info(f"로그 삽입 및 구조화 완료. ID: {last_row_id}")
+        logger.info(f"로그 구조화 적재 완료 [ID: {last_row_id}, Task: {task_name}]")
         return last_row_id
         
     except sqlite3.Error as e:
-        logger.error(f"로그 삽입 중 에러 발생: {e}")
-        try:
-            conn.rollback()
-        except:
-            pass
+        logger.error(f"로그 삽입 에러: {e}")
+        conn.rollback()
         raise
     finally:
         conn.close()
 
+# ... [나머지 cleanup, vacuum 로직 동일] ...
 def cleanup_ttl_logs() -> list[int]:
     conn = get_connection()
     deleted_ids = []
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
-        
         cursor.execute("SELECT id FROM ide_activity_logs WHERE timestamp < datetime('now', '-7 days', 'localtime')")
         rows = cursor.fetchall()
         deleted_ids = [r[0] for r in rows]
-        
         if deleted_ids:
             placeholders = ",".join(["?"] * len(deleted_ids))
             cursor.execute(f"DELETE FROM ide_activity_logs WHERE id IN ({placeholders})", deleted_ids)
-            
         cursor.execute("COMMIT;")
-        if deleted_ids:
-            logger.info(f"SQLite 7일 TTL 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
-            vacuum_db()
-    except sqlite3.Error as e:
-        logger.error(f"SQLite TTL 클리닝 중 에러: {e}")
-        conn.rollback()
+        if deleted_ids: vacuum_db()
     finally:
         conn.close()
-        
     return deleted_ids
 
 def cleanup_old_logs(limit: int = 100) -> list[int]:
@@ -133,63 +125,34 @@ def cleanup_old_logs(limit: int = 100) -> list[int]:
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
-        
         cursor.execute("SELECT id FROM ide_activity_logs ORDER BY timestamp ASC LIMIT ?", (limit,))
         rows = cursor.fetchall()
         deleted_ids = [r[0] for r in rows]
-        
         if deleted_ids:
             placeholders = ",".join(["?"] * len(deleted_ids))
             cursor.execute(f"DELETE FROM ide_activity_logs WHERE id IN ({placeholders})", deleted_ids)
-            
         cursor.execute("COMMIT;")
-        if deleted_ids:
-            logger.info(f"SQLite FIFO 클리닝 완료. 삭제된 레코드 수: {len(deleted_ids)}")
-            vacuum_db()
-    except sqlite3.Error as e:
-        logger.error(f"SQLite FIFO 클리닝 중 에러: {e}")
-        conn.rollback()
+        if deleted_ids: vacuum_db()
     finally:
         conn.close()
-        
     return deleted_ids
 
 def delete_all_logs_by_user(user_key: str) -> int:
-    """
-    특정 API Key 소유자의 모든 수집 활동 로그 레코드를 SQLite에서 일괄 물리 격리 삭제 처리합니다.
-    """
     conn = get_connection()
-    deleted_count = 0
     try:
         cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
-        
         cursor.execute("DELETE FROM ide_activity_logs WHERE user_key = ?", (user_key,))
         deleted_count = cursor.rowcount
-        
-        cursor.execute("COMMIT;")
-        logger.info(f"⚙️ SQLite 클리닝 완료. 유저 [{user_key}] 레코드 완전 파쇄 완료. (건수: {deleted_count})")
+        conn.commit()
         return deleted_count
-    except sqlite3.Error as e:
-        logger.error(f"SQLite 유저 데이터 파쇄 프로세싱 예외 발생: {e}")
-        conn.rollback()
-        raise
     finally:
         conn.close()
 
 def vacuum_db() -> None:
-    """
-    DELETE 수행 후 실제 디스크상의 빈 공간을 환수하기 위해 VACUUM 명령을 실행합니다.
-    """
     conn = get_connection()
     try:
-        # SQLite의 VACUUM은 트랜잭션 밖에서 실행해야 하므로 isolation_level을 None으로 설정합니다.
         conn.isolation_level = None
         cursor = conn.cursor()
         cursor.execute("VACUUM;")
-        logger.info("SQLite VACUUM 실행 완료 - 디스크 공간 최적화 완료")
-    except sqlite3.Error as e:
-        logger.error(f"SQLite VACUUM 실행 중 에러 발생: {e}")
     finally:
         conn.close()
-

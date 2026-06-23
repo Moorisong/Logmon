@@ -1,3 +1,9 @@
+# backend/db/chroma_handler.py
+"""
+ChromaDB 클라이언트 관리, 임베딩 생성, 벡터 적재 모듈.
+벡터 조회/삭제는 chroma_query.py에 위임합니다.
+메타데이터 유틸은 chroma_meta_utils.py에 위임합니다.
+"""
 import os
 import re
 import logging
@@ -5,16 +11,31 @@ import requests
 import chromadb
 from typing import List, Dict, Any
 
-logger = logging.getLogger(__name__)
+from backend.llm.ide_classifier import classify_source_ide_from_fields
+from backend.db.chroma_meta_utils import (
+    classify_action_type,
+    timestamp_to_epoch,
+    normalize_log_level,
+)
+# 하위 호환성: 외부 코드가 chroma_handler에서 직접 임포트하던 심볼 유지
+from backend.db.chroma_query import (
+    query_vectors,
+    delete_vectors_by_log_ids,
+    delete_vectors_by_user_key,
+)
 
-def get_chroma_dir():
-    return os.getenv("LOGMON_CHROMA_DIR", "/app/data/chroma")
+logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 EMBEDDING_MODEL = "nomic-embed-text"
 COLLECTION_NAME = "ide_logs"
 
 _chroma_client = None
+
+
+def get_chroma_dir() -> str:
+    return os.getenv("LOGMON_CHROMA_DIR", "/app/data/chroma")
+
 
 def get_chroma_client() -> chromadb.PersistentClient:
     global _chroma_client
@@ -26,12 +47,14 @@ def get_chroma_client() -> chromadb.PersistentClient:
         _chroma_client = chromadb.PersistentClient(path=chroma_dir)
     return _chroma_client
 
+
 def get_collection():
     client = get_chroma_client()
     return client.get_or_create_collection(
         name=COLLECTION_NAME,
         metadata={"hnsw:space": "cosine"}
     )
+
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str]:
     """
@@ -40,17 +63,15 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
     """
     if not text:
         return []
-        
     if len(text) <= chunk_size:
         return [text]
 
     chunks = []
     start = 0
     text_length = len(text)
-    
+
     while start < text_length:
         end = min(start + chunk_size, text_length)
-        
         if end < text_length:
             last_newline = text.rfind('\n', start, end)
             if last_newline != -1 and (end - last_newline) < 200:
@@ -59,70 +80,70 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> List[str
                 match = re.search(r'[.!?]\s', text[start:end][::-1])
                 if match:
                     end = end - match.start()
-        
+
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-            
         start = end - overlap
-        
         if start <= 0 or end == text_length:
             start = end
 
     return chunks
 
+
 def get_embedding(text: str) -> List[float]:
-    """
-    Ollama API를 호출하여 텍스트의 임베딩 벡터를 반환합니다.
-    """
+    """Ollama API를 호출하여 텍스트의 임베딩 벡터를 반환합니다."""
     url = f"{OLLAMA_HOST}/api/embeddings"
-    payload = {
-        "model": EMBEDDING_MODEL,
-        "prompt": text
-    }
-    
+    payload = {"model": EMBEDDING_MODEL, "prompt": text}
     try:
         response = requests.post(url, json=payload, timeout=60.0)
         response.raise_for_status()
-        data = response.json()
-        return data.get("embedding", [])
+        return response.json().get("embedding", [])
     except requests.exceptions.RequestException as e:
         logger.error(f"Ollama 임베딩 생성 실패: {e}")
         raise
 
+
 def process_and_store_vector(log_id: int, data: Dict[str, Any]):
     """
     raw_message를 청킹하고, 임베딩을 추출하여 Chroma DB에 적재합니다.
-    메타데이터에 id와 user_key를 반드시 포함시킵니다 (멀티테넌시 격리 방어).
+    메타데이터 스키마:
+      - id, user_key, chunk_index (기존)
+      - timestamp (str), timestamp_epoch (int, Epoch 초)
+      - event_type (기존), log_level (INFO/ERROR/WARN/DEBUG)
+      - source_tool (기존), source_ide (IDE 분류 문자열)
+      - action_type (network/build/git/system)
     """
     raw_message = data.get("raw_message")
     if not raw_message:
         return
-        
+
     user_key = data.get("user_key")
-    timestamp = data.get("timestamp")
+    timestamp = data.get("timestamp", "")
     source_tool = data.get("source_tool", "UNKNOWN_TOOL")
     event_type = data.get("event_type", "INFO")
-    
+
+    timestamp_epoch = timestamp_to_epoch(timestamp)
+    source_ide = classify_source_ide_from_fields(source_tool, raw_message)
+    action_type = classify_action_type(raw_message)
+
     chunks = chunk_text(raw_message, chunk_size=800, overlap=100)
-    
     collection = get_collection()
-    
-    docs = []
-    embeddings = []
-    metadatas = []
-    ids = []
-    
+
+    docs: List[str] = []
+    embeddings: List[List[float]] = []
+    metadatas: List[Dict[str, Any]] = []
+    ids: List[str] = []
+
     for i, chunk in enumerate(chunks):
         try:
             vector = get_embedding(chunk)
             if not vector:
                 continue
-                
+
             docs.append(chunk)
             embeddings.append(vector)
-            
-            # Determine chunk-specific event type if the incoming event_type is generic (like LOG_DUMP)
+
             chunk_event_type = event_type
             if event_type == "LOG_DUMP":
                 chunk_lower = chunk.lower()
@@ -133,167 +154,35 @@ def process_and_store_vector(log_id: int, data: Dict[str, Any]):
                 else:
                     chunk_event_type = "INFO"
 
+            chunk_log_level = normalize_log_level(chunk_event_type, chunk)
+
             metadatas.append({
                 "id": log_id,
                 "user_key": user_key,
                 "timestamp": timestamp,
+                "timestamp_epoch": timestamp_epoch,
                 "source_tool": source_tool,
+                "source_ide": source_ide,
                 "event_type": chunk_event_type,
-                "chunk_index": i
+                "log_level": chunk_log_level,
+                "action_type": action_type,
+                "chunk_index": i,
             })
-            
             ids.append(f"{log_id}_{i}")
-            
+
         except Exception as e:
             logger.error(f"청크 {i} 임베딩/적재 중 에러 발생: {e}")
             continue
-            
+
     if docs:
         try:
             collection.add(
                 documents=docs,
                 embeddings=embeddings,
                 metadatas=metadatas,
-                ids=ids
+                ids=ids,
             )
             logger.info(f"Chroma DB 벡터 적재 완료: log_id {log_id}, 청크 {len(docs)}개")
         except Exception as e:
             logger.error(f"Chroma DB 컬렉션 add 실패: {e}")
             raise
-
-def query_vectors(
-    query_text: str,
-    n_results: int = 3,
-    user_key: str = "",
-    event_type: str = "",
-    start_time: str = None,
-    end_time: str = None,
-    keywords: List[str] = None
-) -> List[List[str]]:
-    """
-    사용자의 질문 텍스트를 임베딩하여 Chroma DB에서 유사도가 높은 문서(청크)를 조회합니다.
-    시간 범위(start_time, end_time) 및 특정 키워드(keywords) 필터 조건을 안전하게 후처리 적용합니다.
-    """
-    if not query_text:
-        return []
-        
-    try:
-        query_embedding = get_embedding(query_text)
-        if not query_embedding:
-            return []
-            
-        collection = get_collection()
-        
-        filters = []
-        if user_key:
-            filters.append({"user_key": user_key})
-        if event_type:
-            filters.append({"event_type": event_type})
-            
-        where_filter = {}
-        if len(filters) == 1:
-            where_filter = filters[0]
-        elif len(filters) > 1:
-            where_filter = {"$and": filters}
-            
-        # 시간, 키워드 등의 필터링이 필요한 경우 충분한 모수를 가져와 후처리
-        q_lower = query_text.lower()
-        has_extra_filters = bool(
-            start_time or end_time or keywords or 
-            any(w in q_lower for w in ["오늘", "today", "투데이", "어제", "새벽", "일주일", "분"])
-        )
-        query_n = 100 if has_extra_filters else n_results
-        
-        try:
-            results = collection.query(
-                query_embeddings=[query_embedding],
-                n_results=query_n,
-                where=where_filter if where_filter else None,
-                include=["documents", "metadatas"]
-            )
-        except Exception as query_err:
-            logger.warning(f"Chroma DB 쿼리 실패(필터 문제 의심). 전체 검색 후 파이썬 단 필터링으로 Fallback합니다. 에러: {query_err}")
-            results = collection.query(
-                query_embeddings=[query_embedding],
-                n_results=150,
-                include=["documents", "metadatas"]
-            )
-        
-        docs = results.get("documents", [])[0] if results.get("documents") else []
-        metas = results.get("metadatas", [])[0] if results.get("metadatas") else []
-        
-        filtered_docs = []
-        for doc, meta in zip(docs, metas):
-            # 0. user_key 및 event_type 파이썬 단 수동 필터링 (필터 예외 상황 대비)
-            if user_key and meta.get("user_key") != user_key:
-                continue
-            if event_type and meta.get("event_type") != event_type:
-                continue
-
-            ts = meta.get("timestamp", "")
-            
-            # 1. 시간 범위 필터 적용
-            if start_time and ts < start_time:
-                continue
-            if end_time and ts > end_time:
-                continue
-                
-            # 2. 오늘 날짜 예외 보완 필터 (오늘/투데이/today 있고 구체적 시각 범위가 없을 때)
-            if not start_time and not end_time:
-                if any(w in q_lower for w in ["오늘", "today", "투데이"]):
-                    import datetime
-                    timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
-                    kst_now = datetime.datetime.now(timezone_kst)
-                    today_date_str = kst_now.strftime("%Y-%m-%d")
-                    if not ts or not ts.startswith(today_date_str):
-                        continue
-            
-            # 3. 키워드 필터 적용
-            if keywords:
-                doc_lower = doc.lower()
-                if not any(kw.lower() in doc_lower for kw in keywords):
-                    continue
-                    
-                filtered_docs.append(doc)
-            else:
-                filtered_docs.append(doc)
-                
-            if len(filtered_docs) >= n_results:
-                break
-                
-        return [filtered_docs]
-    except Exception as e:
-        logger.error(f"query_vectors 조회 중 에러 발생: {e}")
-        return []
-
-def delete_vectors_by_log_ids(log_ids: List[int]):
-    """
-    주어진 SQLite 로그 ID 리스트와 매핑되는 Chroma DB 벡터 청크들을 일괄 삭제합니다.
-    """
-    if not log_ids:
-        return
-        
-    try:
-        collection = get_collection()
-        collection.delete(
-            where={"id": {"$in": log_ids}}
-        )
-        logger.info(f"Chroma DB 벡터 클리닝 완료. 연동된 로그 ID 수: {len(log_ids)}")
-    except Exception as e:
-        logger.error(f"Chroma DB 벡터 클리닝 중 에러 발생: {e}")
-
-def delete_vectors_by_user_key(user_key: str):
-    """
-    특정 user_key 메타데이터 조건 필터를 만족하는 모든 Chroma DB 임베딩 벡터를 일괄 삭제 파쇄합니다.
-    """
-    if not user_key:
-        return
-        
-    try:
-        collection = get_collection()
-        collection.delete(
-            where={"user_key": user_key}
-        )
-        logger.info(f"⚙️ Chroma DB 벡터 클리닝 완료. 삭제 처리된 user_key 격리 영역: {user_key}")
-    except Exception as e:
-        logger.error(f"Chroma DB 멀티테넌시 벡터 영역 파쇄 중 예외 에러 발생: {e}")

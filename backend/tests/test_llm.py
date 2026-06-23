@@ -70,10 +70,12 @@ async def test_llm_client_connection_error_fallback():
     assert result == ERROR_FALLBACK_MESSAGE
 
 @pytest.mark.asyncio
+@patch('backend.llm.rag_engine.extract_llm_filters')
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
-async def test_ask_rag_agent_with_context(mock_generate, mock_query):
+async def test_ask_rag_agent_with_context(mock_generate, mock_query, mock_extract):
     # Chroma DB에서 유사 문서를 찾아왔다고 가정
+    mock_extract.return_value = {}
     mock_query.return_value = [["과거 로그 내용 1", "과거 로그 내용 2"]]
     mock_generate.return_value = "RAG 처리된 AI 응답"
     
@@ -87,7 +89,10 @@ async def test_ask_rag_agent_with_context(mock_generate, mock_query):
         event_type="ERROR",
         start_time=None,
         end_time=None,
-        keywords=['error', 'error', '에러', '오류', '실패', 'fail']
+        keywords=['error', 'error', '에러', '오류', '실패', 'fail'],
+        log_level="",
+        source_ide="",
+        action_type="",
     )
 
     
@@ -211,23 +216,25 @@ async def test_ask_rag_agent_guardrail_fallback():
     assert answer == GUARDRAIL_FALLBACK_MSG
 
 @pytest.mark.asyncio
+@patch('backend.llm.rag_engine.extract_llm_filters')
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
-async def test_ask_rag_agent_today_date_filtering(mock_generate, mock_query):
+async def test_ask_rag_agent_today_date_filtering(mock_generate, mock_query, mock_extract):
     """과거 날짜 로그가 오늘 날짜 필터링에 의해 올바르게 걸러지는지 검증"""
     import datetime
     timezone_kst = datetime.timezone(datetime.timedelta(hours=9))
     today_str = datetime.datetime.now(timezone_kst).strftime('%Y-%m-%d')
-    
-    # Chroma DB에서 오늘 로그와 과거 로그가 함께 섞여서 반환되었다고 가정
+
+    # Chroma DB에서 오늘 로그와 과거 로그가 함께 섭여서 반환되었다고 가정
+    mock_extract.return_value = {}
     mock_query.return_value = [[
         f"[{today_str} 10:00:00] [ERROR] Docker binding error",
         "[2026-05-03 14:00:00] [ERROR] Connection lost error"
     ]]
     mock_generate.return_value = "오늘 에러 분석 완료"
-    
+
     answer = await ask_rag_agent("오늘 발생한 에러 분석해줘", "test_user_key")
-    
+
     assert answer == "오늘 에러 분석 완료"
     # 생성된 프롬프트 검증 - 오늘 날짜 로그는 프롬프트에 들어가고, 과거 로그는 파이썬 단에서 Drop 되어 없어야 함
     prompt_sent = mock_generate.call_args[0][0]
@@ -236,13 +243,14 @@ async def test_ask_rag_agent_today_date_filtering(mock_generate, mock_query):
 
 @pytest.mark.asyncio
 async def test_rag_empty_context_handling():
-    """Empty Context 발생 시 LLM을 호출하지 않고 방어하는지 검증"""
+    """"""
     from backend.llm.rag_engine import ask_rag_agent
-    with patch('backend.llm.rag_engine.query_vectors', return_value=[]):
-        with patch('backend.llm.rag_engine.generate_completion') as mock_llm:
-            answer = await ask_rag_agent("에러 찾아줘", "test_key")
-            assert answer == "최근 기록된 작업 로그가 존재하지 않습니다."
-            mock_llm.assert_not_called()
+    with patch('backend.llm.rag_engine.extract_llm_filters', return_value={}):
+        with patch('backend.llm.rag_engine.query_vectors', return_value=[]):
+            with patch('backend.llm.rag_engine.generate_completion') as mock_llm:
+                answer = await ask_rag_agent("에러 찾아줘", "test_key")
+                assert answer == "최근 기록된 작업 로그가 존재하지 않습니다."
+                mock_llm.assert_not_called()
 
 def test_estimate_tokens():
     """글자 수 기반 토큰 수 예측 헬퍼 검증"""
@@ -259,25 +267,27 @@ def test_postprocess_noun_ending():
     assert postprocess_noun_ending("서버가 중단되었습니다.") == "서버가 중단됨."
 
 @pytest.mark.asyncio
+@patch('backend.llm.rag_engine.extract_llm_filters')
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
-async def test_ask_rag_agent_hard_ceiling_drop(mock_generate, mock_query):
-    """Hard Ceiling (1,800 토큰 초과 시 청크 동적 압축) 규칙 검증"""
+async def test_ask_rag_agent_hard_ceiling_drop(mock_generate, mock_query, mock_extract):
+    """"""
     # 3개의 긴 문서 반환 (각 2000글자씩)
     long_doc_1 = "[2026-06-20 09:00:00] [ERROR] RawMessage: " + ("a" * 2000)
     long_doc_2 = "[2026-06-21 10:00:00] [ERROR] RawMessage: " + ("b" * 2000)
     long_doc_3 = "[2026-06-22 11:00:00] [ERROR] RawMessage: " + ("c" * 2000)
-    
+
+    mock_extract.return_value = {}
     mock_query.return_value = [[long_doc_1, long_doc_2, long_doc_3]]
     mock_generate.return_value = "처리 완료됨."
-    
-    # 1,800 토큰(약 4500자)을 넘기기 위해 매우 긴 사용자 질문 입력
+
+    # 1,800 토큰(약 4500자)를 넘기기 위해 매우 긴 사용자 질문 입력
     long_question = "도커 에러 해결법? " + ("q" * 4000)
-    
+
     # RAG 질의 수행
     with patch('backend.llm.utils.logger') as mock_logger:
         answer = await ask_rag_agent(long_question, "test_user_key")
-        
+
         # 1800 토큰 초과로 인해 [WARN] Truncating 로그가 최소 1회 발생해야 함
         warn_called = False
         for args, kwargs in mock_logger.warning.call_args_list:
@@ -285,7 +295,7 @@ async def test_ask_rag_agent_hard_ceiling_drop(mock_generate, mock_query):
                 warn_called = True
                 break
         assert warn_called
-        
+
     assert answer == "처리 완료됨."
 
 def test_parse_query_filters_today():

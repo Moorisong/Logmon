@@ -112,10 +112,12 @@ def test_manage_context_token_limit_truncation():
 
 # 4. STATISTICS 누락 방어 동작 검증
 @pytest.mark.asyncio
+@patch('backend.llm.rag_engine.extract_llm_filters')
 @patch('backend.llm.rag_engine.query_vectors')
 @patch('backend.llm.rag_engine.generate_completion')
-async def test_ask_rag_agent_statistics_none_fallback(mock_generate, mock_query):
+async def test_ask_rag_agent_statistics_none_fallback(mock_generate, mock_query, mock_extract):
     """STATISTICS 없는 컨텍스트 수신 시 에러 없이 정상 진행 검증"""
+    mock_extract.return_value = {}
     mock_query.return_value = [[
         "[2026-06-22 10:00:00] [ERROR] DB query connection timeout error"
     ]]

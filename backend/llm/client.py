@@ -35,12 +35,12 @@ REAL_DB_PATH = "/app/data/logmon.db"
 
 # Fast-track route_key → 팩트 함수 매핑 테이블
 _FAST_TRACK_DISPATCH = {
-    "token":      lambda: get_fact_token_report(),
-    "warning":    lambda: get_fact_warning_report(),
-    "error":      lambda: get_fact_error_report(),
-    "activity":   lambda: get_fact_activity_summary(),
+    "token":        lambda: get_fact_token_report(),
+    "warning":      lambda: get_fact_warning_report(),
+    "error":        lambda: get_fact_error_report(),
+    "activity":     lambda: get_fact_activity_summary(),
     "ide_uptime": lambda: get_fact_ide_uptime(),
-    "git":        lambda: get_fact_git_summary(),
+    "git":          lambda: get_fact_git_summary(),
     "network_db": lambda: get_fact_network_db_errors(),
 }
 
@@ -93,12 +93,18 @@ async def extract_llm_filters(question: str) -> dict:
         "model": MODEL_NAME,
         "prompt": prompt,
         "stream": False,
+        "format": "json", # ◀ [핵심 수정] 가벼운 모델이 JSON 형식을 깨뜨리지 못하도록 Ollama API 차원에서 강제합니다.
         "options": {"temperature": 0.0, "num_thread": OLLAMA_NUM_THREAD},
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(endpoint, json=payload)
             raw_text = response.json().get("response", "")
+            
+            # 모델이 완전히 빈 응답을 반환할 경우를 대비한 방어 로직
+            if not raw_text.strip():
+                return {}
+                
             return parse_llm_filter_response(raw_text)
     except Exception as e:
         logger.warning(f"[Router] LLM 필터 추출 실패 (Fallback: 빈 필터 사용): {e}")

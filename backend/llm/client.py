@@ -12,7 +12,8 @@ try:
 except ValueError:
     OLLAMA_NUM_THREAD = 3
 
-MODEL_NAME = "gemma2:2b"
+# ◀ [완벽 수정] gemma의 흔적을 완전히 지우고 llama3.2:1b를 기본값으로 설정
+MODEL_NAME = os.getenv("LLM_MODEL", "llama3.2:1b")
 REAL_DB_PATH = "/app/data/logmon.db"
 
 def get_db_connection():
@@ -92,14 +93,9 @@ def parse_vacuum_clean_query(prompt: str) -> tuple[str, str]:
     clean_q = prompt.replace('"', '').replace("'", "")
     
     if re.search(r'user avatar', clean_q, re.IGNORECASE):
-        # 유저 질문 기준으로 블록 분할
         blocks = re.split(r'(?i)user avatar', clean_q)
-        
-        # 마지막 블록 = 가장 최신 질문
         latest_raw = blocks[-1]
         latest_query = re.split(r'(?i)assistant avatar', latest_raw)[0].strip()
-        
-        # 히스토리 복원 (과거 질문 + 과거 답변)
         history_lines = []
         for block in blocks[:-1]:
             if not block.strip(): continue
@@ -111,20 +107,14 @@ def parse_vacuum_clean_query(prompt: str) -> tuple[str, str]:
                 ai_text = parts[1].strip()
                 if ai_text:
                     history_lines.append(f"AI: {ai_text}")
-                    
-        # 최근 3번의 대화(쌍)만 가져옴
         history = "\n\n".join(history_lines[-6:])
         return latest_query, history
 
-    # 기존 태그 기반 폴백
     blocks = re.split(r'\[User Query\]|<start_of_turn>user', clean_q)
     latest_query = blocks[-1].replace('<end_of_turn>', '').strip()
     history = "\n".join([b[:200] for b in blocks[-4:-1] if b.strip()])
     return latest_query, history
 
-# =========================================================================
-# 단순 통계 전용 함수 
-# =========================================================================
 def get_fact_token_report():
     try:
         with get_db_connection() as conn:

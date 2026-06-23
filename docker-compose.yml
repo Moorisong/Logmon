@@ -11,6 +11,8 @@ services:
         limits:
           cpus: "3.0"
     restart: unless-stopped
+    # 컨테이너 시작 시 모델을 미리 pull 하도록 설정 가능
+    command: ollama serve
 
   logmon-backend:
     build:
@@ -22,10 +24,12 @@ services:
     env_file:
       - .env
     environment:
-      - TZ=Asia/Seoul  # ◀ [★시차 완치] 한국 표준시(KST) 주입 완료!
+      - TZ=Asia/Seoul
       - LOGMON_DB_DIR=/app/data
       - LOGMON_CHROMA_DIR=/app/chroma_data
       - OLLAMA_HOST=http://logmon-ollama:11434
+      # ◀ 여기서 모델을 지정합니다. LLM 로직 코드에서 이 변수를 참조하도록 확인하세요!
+      - LLM_MODEL=llama3.2:1b 
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
     volumes:
       - /home/ksh/logmon/backend:/app/backend
@@ -51,7 +55,7 @@ services:
     env_file:
       - .env
     environment:
-      - TZ=Asia/Seoul  # ◀ (옵션) UI 컨테이너도 시간 맞춰두면 로그 볼 때 편합니다!
+      - TZ=Asia/Seoul
       - BACKEND_URL=http://logmon-backend:8000
       - LOGMON_API_KEY=${ALLOWED_API_KEYS}
     networks:

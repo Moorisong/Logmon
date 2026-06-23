@@ -49,9 +49,19 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         if not context_str.strip():
             context_str = "\n\n".join(docs[:5])
 
-        # 5. 이전 대화 맥락 포함
+        # 5. 이전 대화 맥락 포함 (XML 태그 격리 방식 적용)
         history = get_conversation_context(user_key)
-        final_question = f"[이전 대화]\n{history}\n\n[질문]\n{question}" if history else question
+        
+        if history:
+            # 1B 모델이 헷갈리지 않도록 이전 대화를 철저히 격리하고, 현재 질문을 강하게 부각합니다.
+            final_question = (
+                "아래 <Past_Context>는 과거 대화 기록이니 맥락 파악용으로만 참고하고, "
+                "절대 현재 질문에 대한 답변으로 복사해서 사용하지 마시오.\n"
+                f"<Past_Context>\n{history}\n</Past_Context>\n\n"
+                f"[Current Task (반드시 아래 질문에만 대답할 것)]\n{question}"
+            )
+        else:
+            final_question = question
         
         # 6. 추론용 프롬프트 생성
         current_date = datetime.datetime.now(_TZ_KST).strftime("%Y-%m-%d")
@@ -64,7 +74,11 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
         # 7. LLM 추론 및 대화 기록
         answer = await generate_completion(prompt)
         answer = postprocess_noun_ending(answer)
+        
+        # (주의) memory.py의 add_conversation 내부에서 대화 세트가 3개를 초과하지 않도록 
+        # pop() 또는 슬라이싱 처리가 되어 있는지 확인이 필요합니다.
         add_conversation(user_key, question, answer)
+        
         return answer
 
     except Exception as e:

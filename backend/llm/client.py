@@ -21,6 +21,8 @@ def get_db_connection():
 
 async def generate_completion(prompt: str) -> str:
     # 🎯 1. 최신 질문(라우팅용)과 과거 대화 기록(문맥 유지용) 분리 추출
+    logger.info(f"=== [디버깅] 백엔드 유입 원본 프롬프트 ===\n{prompt}\n====================================")
+
     latest_query, history_context = parse_vacuum_clean_query(prompt)
     q_lower = latest_query.lower()
     
@@ -88,7 +90,7 @@ async def call_ollama_with_context(latest_query: str, history_context: str, targ
 def parse_vacuum_clean_query(prompt: str) -> tuple[str, str]:
     """
     프론트엔드에서 넘어온 전체 텍스트에서 '최신 질문'을 분리하고,
-    과거 유저-AI 대화 3턴(약 6개 텍스트 블록)을 유지하여 문맥으로 묶어냅니다.
+    과거 유저-AI 대화 3턴을 유지하여 문맥으로 묶어냅니다.
     """
     clean_q = prompt.replace('"', '').replace("'", "")
     
@@ -110,8 +112,19 @@ def parse_vacuum_clean_query(prompt: str) -> tuple[str, str]:
         history = "\n\n".join(history_lines[-6:])
         return latest_query, history
 
+    # 🎯 여기서부터가 수정된 핵심 로직입니다.
     blocks = re.split(r'\[User Query\]|<start_of_turn>user', clean_q)
-    latest_query = blocks[-1].replace('<end_of_turn>', '').strip()
+    raw_latest_block = blocks[-1]
+    
+    # 1. [현재 질문] 태그가 있다면 그 뒷부분만 진짜 최신 질문으로 발췌! (과거 히스토리 절단)
+    if '[현재 질문]' in raw_latest_block:
+        latest_query = raw_latest_block.split('[현재 질문]')[-1]
+    else:
+        latest_query = raw_latest_block
+        
+    # 2. 뒤에 붙어오는 쓸데없는 LLM 토큰 꼬리표 완벽 제거
+    latest_query = re.sub(r'<start_of_turn>model|<end_of_turn>', '', latest_query).strip()
+    
     history = "\n".join([b[:200] for b in blocks[-4:-1] if b.strip()])
     return latest_query, history
 

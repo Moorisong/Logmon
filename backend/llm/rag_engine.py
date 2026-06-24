@@ -1,72 +1,105 @@
 import logging
 import sqlite3
 import os
-from typing import Tuple
+from typing import Tuple, Dict
 from backend.db.chroma_handler import query_vectors
 from backend.llm.client import generate_completion
-from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE
 from backend.llm.guardrail import check_guardrail, GUARDRAIL_FALLBACK_MSG
-from backend.llm.reranker import rerank_documents
 from backend.llm.utils import postprocess_noun_ending, parse_relative_datetime
 
 logger = logging.getLogger(__name__)
-CURRENT_SYS_TIME = "2026-06-24"
 
-def get_stats_data(start_time: str, end_time: str) -> Tuple[int, int, str]:
-    """에러 총계와 날짜별 상세 통계를 반환합니다."""
+def should_skip_rag(question: str) -> bool:
+    """질문이 정량적인 통계/사실 확인 질문인지 판단하여 RAG 스킵 여부 결정"""
+    keywords = ["몇 개", "몇 번", "횟수", "개수", "빈도", "순위", "어느", "시간대", "총", "합계", "얼마나"]
+    return any(keyword in question for keyword in keywords)
+
+def get_comprehensive_stats(start_time: str, end_time: str) -> Dict[str, str]:
+    """모든 핵심 지표를 SQL로 미리 계산하여 리포트 형태로 반환합니다."""
     conn = sqlite3.connect(os.path.join(os.environ.get("LOGMON_DB_DIR", "/app/data"), "logmon.db"))
     cursor = conn.cursor()
     
-    # 총계
-    cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[error]%' AND timestamp BETWEEN ? AND ?", (start_time, end_time))
-    err = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[warning]%' AND timestamp BETWEEN ? AND ?", (start_time, end_time))
-    warn = cursor.fetchone()[0]
-    
-    # 날짜별 통계 (LLM이 답변할 수 있게 함)
+    # 1. 코딩 몰입도
     cursor.execute("""
-        SELECT date(timestamp), COUNT(*) 
+        SELECT file_path, COUNT(*) 
         FROM ide_activity_logs 
-        WHERE raw_message LIKE '%[error]%' AND timestamp BETWEEN ? AND ? 
-        GROUP BY date(timestamp) 
-        ORDER BY date(timestamp) DESC
+        WHERE workspace_active = 1 AND timestamp BETWEEN ? AND ? 
+        GROUP BY file_path ORDER BY COUNT(*) DESC LIMIT 5
     """, (start_time, end_time))
-    daily_stats = cursor.fetchall()
-    
-    table_str = "\n".join([f"- {d}: {c}회" for d, c in daily_stats])
+    top_files = cursor.fetchall()
+    coding_rep = "\n".join([f"- {f}: {c}회" for f, c in top_files]) if top_files else "활동 기록 없음"
+
+    # 2. AI 활용도
+    cursor.execute("""
+        SELECT SUM(input_tokens + output_tokens), COUNT(*) 
+        FROM ide_activity_logs 
+        WHERE task_name = 'ai_assisted' AND timestamp BETWEEN ? AND ?
+    """, (start_time, end_time))
+    res = cursor.fetchone()
+    ai_rep = f"- 총 활용 횟수: {res[1] or 0}회\n- 총 토큰 소모량: {res[0] or 0} tokens"
+
+    # 3. 에러/디버깅
+    cursor.execute("""
+        SELECT event_type, COUNT(*) 
+        FROM ide_activity_logs 
+        WHERE event_type IN ('ERROR', 'WARN') AND timestamp BETWEEN ? AND ? 
+        GROUP BY event_type
+    """, (start_time, end_time))
+    err_stats = cursor.fetchall()
+    err_rep = "\n".join([f"- {e}: {c}회" for e, c in err_stats]) if err_stats else "에러/경고 기록 없음"
+
+    # 4. 환경/IDE 사용 현황
+    cursor.execute("""
+        SELECT source_tool, COUNT(*) 
+        FROM ide_activity_logs 
+        WHERE timestamp BETWEEN ? AND ? 
+        GROUP BY source_tool
+    """, (start_time, end_time))
+    ide_stats = cursor.fetchall()
+    ide_rep = "\n".join([f"- {i}: {c}건" for i, c in ide_stats]) if ide_stats else "정보 없음"
+
     conn.close()
-    return err, warn, table_str
+    return {"coding": coding_rep, "ai": ai_rep, "error": err_rep, "ide": ide_rep}
 
 async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
     if not check_guardrail(question): return GUARDRAIL_FALLBACK_MSG
 
     start_time, end_time = parse_relative_datetime(question)
-    err_cnt, warn_cnt, daily_table = get_stats_data(start_time, end_time)
+    report = get_comprehensive_stats(start_time, end_time)
     
-    # 벡터 검색 (통계 로그 방해 금지: 통계 텍스트가 포함된 로그는 필터링)
-    results = query_vectors(question, top_k, user_key, start_time, end_time)
-    docs = []
-    if results and results[0]:
-        for doc in results[0]:
-            if "[STATISTICS]" not in doc: # 방해물 제거
-                docs.append(doc)
-    
-    context_str = "\n".join(docs[:3]) if docs else "검색된 로그 없음."
+    # 2. 라우팅 로직: 통계 질문이면 RAG 스킵
+    context_block = ""
+    if not should_skip_rag(question):
+        results = query_vectors(question, top_k, user_key, start_time, end_time)
+        docs = [doc for res in (results or []) for doc in res if "[STATISTICS]" not in doc]
+        if docs:
+            context_block = f"\n[참고용 로그 문맥]\n{chr(10).join(docs[:3])}\n"
 
-    # 프롬프트: 확실한 팩트 주입
-    prompt = (
-        f"당신은 분석가입니다. [확정 데이터]를 근거로만 답변하십시오.\n\n"
-        f"[확정 데이터]\n"
-        f"- 기간: {start_time} ~ {end_time}\n"
-        f"- 에러 총 횟수: {err_cnt}회\n"
-        f"- 날짜별 에러 상세:\n{daily_table}\n\n"
-        f"[참고용 컨텍스트]\n{context_str}\n\n"
-        f"질문: {question}\n\n"
-        f"지침:\n1. [확정 데이터]가 정답입니다. 컨텍스트 속 수치는 무시하십시오.\n"
-        f"2. 0건이면 '없음'으로 답변하십시오.\n"
-        f"3. 가장 많은 날짜를 물으면 [확정 데이터]의 '날짜별 에러 상세'를 확인해 대답하십시오.\n"
-        f"4. 한국어 명사형으로 간결하게 답변하십시오."
-    )
+    # 3. 프롬프트 구성 (팩트 우선)
+    prompt = f"""당신은 Logmon 수석 분석가입니다. 아래 [확정 리포트]를 근거로만 답변하십시오.
+
+[확정 리포트]
+---
+1. 코딩 집중도 (상위 파일):
+{report['coding']}
+
+2. AI 도구 활용:
+{report['ai']}
+
+3. 에러 및 디버깅 현황:
+{report['error']}
+
+4. 개발 환경:
+{report['ide']}
+---
+{context_block}
+질문: {question}
+
+지침:
+1. 위 리포트에 기재된 수치가 가장 정확한 정답입니다.
+2. 질문이 통계/수치와 관련된다면 리포트의 내용을 최우선으로 하십시오.
+3. 한국어 명사형으로 간결하게 답변하십시오.
+"""
 
     answer = await generate_completion(prompt)
     return postprocess_noun_ending(answer)

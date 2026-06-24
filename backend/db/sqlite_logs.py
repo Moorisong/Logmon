@@ -22,7 +22,9 @@ def init_db():
                 input_tokens INTEGER DEFAULT 0,
                 output_tokens INTEGER DEFAULT 0,
                 raw_message TEXT,
-                has_code_block INTEGER DEFAULT 0
+                has_code_block INTEGER DEFAULT 0,
+                file_path TEXT DEFAULT 'UNKNOWN',
+                workspace_active INTEGER DEFAULT 0
             );
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_time ON ide_activity_logs(user_key, timestamp);")
@@ -61,6 +63,10 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     else:
         return None
 
+    # 작업 활성 상태 및 파일 경로 처리
+    is_workspace_active = 1 if task_name == "workspace_active" else 0
+    file_path = data.get("file_path") or "UNKNOWN"
+
     # 토큰값 보강
     in_tok = data.get("input_tokens", 0) or 0
     out_tok = data.get("output_tokens", 0) or 0
@@ -82,13 +88,14 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
             INSERT INTO ide_activity_logs (
                 user_key, source_tool, timestamp, event_type, 
                 task_name, duration_seconds, input_tokens, output_tokens, 
-                raw_message, has_code_block
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                raw_message, has_code_block, file_path, workspace_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         cursor.execute(insert_query, (
             user_key, data.get("source_tool", "UNKNOWN_TOOL"), timestamp,
             event_type, task_name, data.get("duration_seconds", 0.0),
-            in_tok, out_tok, enriched_message, data.get("has_code_block", 0)
+            in_tok, out_tok, enriched_message, data.get("has_code_block", 0),
+            file_path, is_workspace_active
         ))
         last_row_id = cursor.lastrowid
         
@@ -97,7 +104,7 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
         
         cursor.execute("UPDATE ide_activity_logs SET raw_message = ? WHERE id = ?;", (structured_message, last_row_id))
         cursor.execute("COMMIT;")
-        logger.info(f"✅ 핵심 로그 적재 완료 [ID: {last_row_id}, Task: {task_name}]")
+        logger.info(f"✅ 핵심 로그 적재 완료 [ID: {last_row_id}, Task: {task_name}, Path: {file_path}]")
         return last_row_id
     except sqlite3.Error as e:
         conn.rollback()

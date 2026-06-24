@@ -1,20 +1,16 @@
-import datetime
 import logging
-import os
+from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Response
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, status, BackgroundTasks
 from pydantic import BaseModel
 
-from backend.api.dependencies import verify_api_key
-from backend.db.sqlite_handler import insert_activity_log, get_dashboard_stats
-from backend.db.chroma_handler import process_and_store_vector
-from backend.llm.rag_engine import ask_rag_agent
-
+# 로거 초기화
 logger = logging.getLogger(__name__)
 
+# 라우터 객체 정의
 router = APIRouter(prefix="/api/logmon", tags=["Logmon Agent API"])
 
+# Pydantic 모델 정의
 class LogPayload(BaseModel):
     source_tool: str
     event_type: str
@@ -28,207 +24,45 @@ class LogPayload(BaseModel):
 class ChatRequest(BaseModel):
     question: str
 
-def run_chroma_pipeline(log_id: int, data: dict):
-    try:
-        process_and_store_vector(log_id, data)
-    except Exception as e:
-        logger.error(f"백그라운드 Chroma DB 적재 실패 (log_id: {log_id}): {e}")
-
-@router.get("/agent-setup-script", status_code=status.HTTP_200_OK)
-async def get_install_script():
-    """
-    서버의 API Key와 가비아 도메인 주소를 install-agent.sh에 
-    동적으로 주입하여 에이전트(CLI)에게 문자열 텍스트로 반환합니다.
-    """
-    script_path = "backend/static/install-agent.sh"
-    if not os.path.exists(script_path):
-        script_path = os.path.join(os.path.dirname(__file__), "..", "static", "install-agent.sh")
-
-    try:
-        with open(script_path, "r", encoding="utf-8") as f:
-            content = f.read()
-    except Exception as e:
-        logger.error(f"설치 스크립트 파일을 읽을 수 없습니다: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Installation script source file not found"
-        )
-    
-    if "#!/usr/bin/env bash" in content:
-        parts = content.split("#!/usr/bin/env bash")
-        if len(parts) > 2:
-            content = "#!/usr/bin/env bash" + parts[1]
-    
-    allowed_keys = os.getenv("ALLOWED_API_KEYS", "default_dev_key")
-    primary_key = allowed_keys.split(",")[0].strip() 
-    
-    server_url = "https://logmon.haroo.site" 
-
-    content = content.replace('BACKEND_URL="http://localhost:3008"', f'BACKEND_URL="{server_url}"')
-    content = content.replace('API_KEY="default_dev_key"', f'API_KEY="{primary_key}"')
-
-    return Response(content=content, media_type="text/plain")
-
-@router.get("/agent-uninstall-script", status_code=status.HTTP_200_OK)
-async def get_uninstall_script():
-    """
-    Nginx 라우팅 프록시 간섭 없이 언인스톨 스크립트를 안정적으로 반환하는 라우터 엔드포인트입니다.
-    """
-    script_path = "backend/static/uninstall-agent.sh"
-    if not os.path.exists(script_path):
-        script_path = os.path.join(os.path.dirname(__file__), "..", "static", "uninstall-agent.sh")
-
-    try:
-        with open(script_path, "r", encoding="utf-8") as f:
-            content = f.read()
-    except Exception as e:
-        logger.error(f"제거 스크립트 파일을 읽을 수 없습니다: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Uninstall script source file not found"
-        )
-    return Response(content=content, media_type="text/plain")
-
-@router.get("/static/{file_name}")
-async def get_static_file(file_name: str):
-    """
-    도커 내부 absolute path 기준 구조로 static 디렉터리 내의 파이썬 에이전트 소스들을 안전하게 스트리밍합니다.
-    """
-    if file_name == "uninstall-agent.sh":
-        return await get_uninstall_script()
-
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)
-    static_dir = os.path.join(base_dir, "static")
-    file_path = os.path.join(static_dir, file_name)
-    
-    if not os.path.exists(file_path):
-        logger.error(f"🚨 [정적 파일 누락 확인] 지정된 경로에 파일이 존재하지 않습니다: {file_path}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"File {file_name} not found in container static storage."
-        )
-        
-    media_type = "application/x-python" if file_name.endswith(".py") else "text/plain"
-    return FileResponse(path=file_path, media_type=media_type, filename=file_name)
-
-@router.post("/upload", status_code=status.HTTP_201_CREATED)
-async def upload_log(
-    payload: LogPayload, 
-    background_tasks: BackgroundTasks,
-    api_key: str = Depends(verify_api_key)
-):
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data = payload.model_dump()
-    data["user_key"] = api_key
-    data["timestamp"] = now_str
-    
-    try:
-        log_id = insert_activity_log(data)
-    except Exception as e:
-        logger.error(f"SQLite 3 적재 에러: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database persistence error"
-        )
-        
-    if log_id is None:
-        return {
-            "status": "skipped",
-            "detail": "Log already exists (Idempotent request)"
-        }
-        
-    background_tasks.add_task(run_chroma_pipeline, log_id, data)
-    background_tasks.add_task(run_capacity_check_pipeline)
-    
-    # 1단계 [Pre-computed Summary 적재]: 업로드 직후 오늘 통계 미리 계산하여 적재
-    from backend.llm.utils import upsert_daily_statistics
-    background_tasks.add_task(upsert_daily_statistics, api_key)
-    
-    return {
-        "status": "success",
-        "processed_records": 1,
-        "log_id": log_id
-    }
-
-def run_capacity_check_pipeline():
-    from backend.db.sqlite_handler import get_total_db_size_mb, cleanup_old_logs, cleanup_ttl_logs, vacuum_db
-    from backend.db.chroma_handler import delete_vectors_by_log_ids
-    
-    try:
-        ttl_deleted_ids = cleanup_ttl_logs()
-        if ttl_deleted_ids:
-            delete_vectors_by_log_ids(ttl_deleted_ids)
-            # TTL 정리 후에도 용량 확보를 위해 vacuum을 수행합니다.
-            vacuum_db()
-            
-        max_mb = 500.0
-        # 최대 5회만 반복하여 무한 루프로 인한 데이터 전량 증발을 원천 차단합니다.
-        for _ in range(5):
-            current_mb = get_total_db_size_mb()
-            if current_mb > max_mb:
-                logger.info(f"Hard Cap 초과 (현재: {current_mb:.2f}MB / 최대: {max_mb}MB). FIFO 클리닝 시작...")
-                # 지우는 단위를 100건에서 1,000건으로 확대하여 신속히 용량을 확보합니다.
-                fifo_deleted_ids = cleanup_old_logs(limit=1000)
-                if not fifo_deleted_ids:
-                    break
-                delete_vectors_by_log_ids(fifo_deleted_ids)
-                # SQLite 삭제 레코드의 디스크 공간을 반환하여 다음 루프에서 파일 크기 축소분이 반영되도록 합니다.
-                vacuum_db()
-            else:
-                break
-    except Exception as e:
-        logger.error(f"용량 체크 파이프라인 에러: {e}")
-
-
-@router.post("/chat", status_code=status.HTTP_200_OK)
-async def chat_with_logmon(
-    payload: ChatRequest,
-    api_key: str = Depends(verify_api_key)
-):
-    logger.info(f"POST /chat request - question: {payload.question}, api_key: {api_key}")
-    answer = await ask_rag_agent(question=payload.question, user_key=api_key)
-    return {"answer": answer}
+# 의존성 및 DB/RAG 함수 임포트
+from backend.api.dependencies import verify_api_key
+from backend.db.sqlite_handler import insert_activity_log, get_dashboard_stats
+from backend.llm.rag_engine import ask_rag_agent
 
 @router.get("/stats", status_code=status.HTTP_200_OK)
-async def get_stats(
-    api_key: str = Depends(verify_api_key)
-):
-    stats_data = get_dashboard_stats(user_key=api_key)
-    return stats_data
-
-@router.delete("/uninstall", status_code=status.HTTP_200_OK)
-async def uninstall_and_wipe_agent(
-    background_tasks: BackgroundTasks,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    에이전트 수동 완전 삭제 발생 시 동기 호출되며, 해당 유저 키로 연동된 
-    SQLite 및 Chroma DB 벡터 리소스를 백그라운드 워커를 통해 물리적으로 일괄 증발시킵니다.
-    """
-    from backend.db.sqlite_handler import delete_all_logs_by_user
-    from backend.db.chroma_handler import delete_vectors_by_user_key
-
+async def get_stats(api_key: str = Depends(verify_api_key)):
     try:
-        background_tasks.add_task(delete_vectors_by_user_key, api_key)
-        background_tasks.add_task(delete_all_logs_by_user, api_key)
-        logger.info(f"🗑️ 사용자 [{api_key}] 에이전트 폐기 스케줄 등록 완료 (SQLite & Chroma DB)")
-        return {"status": "success", "message": "Agent wipe pipeline has been registered successfully."}
+        stats_data = get_dashboard_stats(api_key)
+        if stats_data is None: stats_data = {}
+        stats_data["is_online"] = True
+        return stats_data
     except Exception as e:
-        logger.error(f"에이전트 정보 폐기 파이프라인 트리거 에러: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server core agent data wipe workflow failed"
-        )
+        logger.error(f"통계 API 호출 실패: {e}")
+        return {"is_online": False, "total_logs": 0, "trend_7d": [], "is_agent_installed": False}
 
-@router.post("/force-clear", status_code=status.HTTP_200_OK)
-async def force_clear_by_key(target_key: str, background_tasks: BackgroundTasks):
-    """
-    [디버깅 치트키] 에이전트가 끊긴 상태에서 특정 유저 키의 모든 흔적을 0으로 청소합니다.
-    """
-    from backend.db.sqlite_handler import delete_all_logs_by_user
-    from backend.db.chroma_handler import delete_vectors_by_user_key
-    
-    background_tasks.add_task(delete_vectors_by_user_key, target_key)
-    background_tasks.add_task(delete_all_logs_by_user, target_key)
-    return {"status": "forced", "target": target_key}
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload_log(payload: LogPayload, background_tasks: BackgroundTasks, api_key: str = Depends(verify_api_key)):
+    try:
+        # 1. 페이로드 데이터를 딕셔너리로 변환
+        log_data = payload.dict()
+        
+        # 2. 필수 필드 주입: user_key와 timestamp
+        log_data["user_key"] = api_key
+        log_data["timestamp"] = datetime.now().isoformat() # 현재 시간 자동 삽입
+        
+        # 3. DB 저장
+        insert_activity_log(log_data)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"로그 업로드 실패: {e}")
+        return {"status": "error", "message": str(e)}
+
+@router.post("/chat", status_code=status.HTTP_200_OK)
+async def chat_with_logmon(payload: ChatRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        # RAG 엔진 호출
+        answer = await ask_rag_agent(question=payload.question, user_key=api_key)
+        return {"answer": answer}
+    except Exception as e:
+        logger.error(f"챗봇 오류: {e}")
+        return {"answer": "현재 AI 엔진 서비스가 일시 점검 중입니다."}

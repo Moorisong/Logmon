@@ -10,14 +10,11 @@ from backend.llm.client import generate_completion
 from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE
 from backend.llm.guardrail import check_guardrail, GUARDRAIL_FALLBACK_MSG
 from backend.llm.reranker import rerank_documents
-from backend.llm.memory import add_conversation
-from backend.llm.utils import (
-    postprocess_noun_ending,
-    parse_relative_datetime,
-)
+from backend.llm.utils import postprocess_noun_ending, parse_relative_datetime
 
 logger = logging.getLogger(__name__)
 _TZ_KST = datetime.timezone(datetime.timedelta(hours=9))
+CURRENT_SYS_TIME = "2026-06-24"
 
 def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> tuple:
     """SQLite DB에서 특정 기간 동안의 실제 ERROR 및 WARN 로그 개수를 정확히 카운트합니다."""
@@ -29,12 +26,11 @@ def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 실제 스키마(event_type, timestamp) 기준 쿼리
+        # 10일 전을 기본값으로 설정
+        base_time = start_time if start_time else (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
+        
         q_err = "SELECT COUNT(*) FROM ide_activity_logs WHERE event_type LIKE '%ERROR%' AND timestamp >= ?"
         q_warn = "SELECT COUNT(*) FROM ide_activity_logs WHERE event_type LIKE '%WARN%' AND timestamp >= ?"
-        
-        # 기본값: 오늘로부터 10일 전 혹은 설정된 start_time
-        base_time = start_time if start_time else (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
         
         cursor.execute(q_err, (base_time,))
         error_count = cursor.fetchone()[0]
@@ -45,54 +41,47 @@ def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> 
         logger.error(f"❌ 실시간 통계 조회 오류: {e}")
     return error_count, warn_count
 
-async def ask_rag_agent(question: str, user_key: str, top_k: int = 10) -> str:
-    logger.info(f"RAG 질의 시작: {question}")
+async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
+    logger.info(f"RAG 질의 시작 (Stateless Mode): {question}")
     
     if not check_guardrail(question):
         return GUARDRAIL_FALLBACK_MSG
 
     try:
+        # 1. 파이썬이 먼저 정확한 통계를 계산 (결정론적 데이터)
         start_time, end_time = parse_relative_datetime(question)
-        
-        # 파이썬이 먼저 정확한 통계를 계산함 (필살기 1)
         err_cnt, warn_cnt = get_exact_log_counts(start_time, end_time)
         
+        # 2. 벡터 검색은 '보조적(Qualitative)'으로만 수행 (속도 최적화: top_k 축소)
         results = query_vectors(query_text=question, n_results=top_k, user_key=user_key, start_time=start_time, end_time=end_time)
-        
         raw_docs = results[0] if results else []
         raw_metadatas = results[2] if results else []
 
-        if not raw_docs:
-            return "최근 기록된 작업 로그가 존재하지 않습니다."
+        docs = [f"[DATE: {meta.get('timestamp', 'N/A')}]\n{doc}" for doc, meta in zip(raw_docs, raw_metadatas)]
+        context_str = rerank_documents(query=question, documents=docs, top_k=2) if docs else "검색된 로그 없음."
 
-        docs = [f"[IDE: {meta.get('source_ide', 'Unknown')}]\n{doc}" for doc, meta in zip(raw_docs, raw_metadatas)]
-        context_str = rerank_documents(query=question, documents=docs, top_k=2)
-
-        # 시스템 규칙 주입 및 필살기 적용
+        # 3. 데이터 주입 및 날짜 검증 프롬프트 (필살기)
         stats_injection = (
+            f"[System Date]: {CURRENT_SYS_TIME}\n"
             "[정확한 실시간 DB 통계 데이터]\n"
             f"- 검색 기간 내 실제 ERROR 로그: {err_cnt}건\n"
             f"- 검색 기간 내 실제 WARN 로그: {warn_cnt}건\n"
-            "※ 수치 답변 시 반드시 위 통계 데이터를 기준으로 할 것.\n"
-            "※ 중요: 로그의 날짜가 시스템 시간(2026-06-24)보다 과거라면 이는 오래된 데이터이므로 명시할 것.\n\n"
+            "※ 답변 시 반드시 위 통계 데이터(ERROR/WARN 개수)를 숫자로 명시할 것.\n"
+            "※ 만약 로그의 날짜가 시스템 시간(2026-06-24)보다 과거라면, 이를 반드시 '과거 데이터'로 명시하고, 현재 시점의 문제인지 구분하여 답변할 것.\n\n"
         )
 
+        # 4. 프롬프트 구성 (질문이 통계 중심이면 컨텍스트를 줄임)
         final_question = f"{stats_injection}[분석할 현재 질문]\n{question}"
         
-        current_date = datetime.datetime.now(_TZ_KST).strftime("%Y-%m-%d")
         prompt = RAG_PROMPT_TEMPLATE.format(
-            current_date=current_date,
+            current_date=CURRENT_SYS_TIME,
             context=context_str,
             question=final_question
         )
 
+        # 5. LLM 추론 (Stateless: 이전 대화 기억 주입 안 함)
         answer = await generate_completion(prompt)
-        answer = postprocess_noun_ending(answer)
-        
-        # 메모리 적재는 하되, 이전 맥락을 주입하지 않음으로써 Stateless 유지 (필살기 2)
-        add_conversation(user_key, question, answer)
-        
-        return answer
+        return postprocess_noun_ending(answer)
 
     except Exception as e:
         logger.error(f"RAG 추론 오류: {e}", exc_info=True)

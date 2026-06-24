@@ -34,16 +34,16 @@ else:
 @fragment_decorator
 def live_dashboard_fragment():
     stats = fetch_stats()
-    is_agent_installed = stats.get("is_agent_installed", False)
+    
+    # 서버 자체가 아예 응답을 안 할 때만 에러 상태로 처리
+    is_server_down = (stats is None)
+    st.session_state["is_server_down"] = is_server_down
+    
+    # 에이전트 설치 및 5분 이내 통신 여부
+    is_agent_installed = stats.get("is_agent_installed", False) if stats else False
+    is_agent_online = stats.get("is_online", False) if stats else False
 
-    # 에이전트 설치 상태 변경 감지하여 전체 화면(챗봇 등) 새로고침
-    prev_installed = st.session_state.get("is_agent_installed", None)
-    if prev_installed is not None and prev_installed != is_agent_installed:
-        st.session_state["is_agent_installed"] = is_agent_installed
-        st.rerun()
-    st.session_state["is_agent_installed"] = is_agent_installed
-
-    # 3. 헤더 및 에이전트 설치 버튼 통합 렌더링 (동기화 영역과의 겹침 및 간섭 해결)
+    # 3. 헤더 및 에이전트 설치 버튼 통합 렌더링
     col_logo_title, col_install_btn = st.columns([0.8, 0.2])
 
     with col_logo_title:
@@ -56,9 +56,9 @@ def live_dashboard_fragment():
         ''', unsafe_allow_html=True)
 
     with col_install_btn:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # 로고 타이틀과 수직 정렬을 맞추기 위한 상단 패딩
-        
-        if is_agent_installed:
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        # 에이전트가 설치되어 있고 살아있을 때만 '제거하기' 버튼 표시
+        if is_agent_installed and is_agent_online:
             btn_text = "에이전트 제거하기"
             btn_link = "/install?mode=uninstall"
             st.markdown(
@@ -70,12 +70,8 @@ def live_dashboard_fragment():
                 unsafe_allow_html=True
             )
 
-    # 에러 상태 여부 판단 (백엔드가 오프라인인 경우)
-    is_error_state = not stats.get("is_online", True)
-    st.session_state["is_error_state"] = is_error_state
-
-    if is_error_state:
-        # 빨간 박스 (에러 알림창) 렌더링 - Welcome 타이틀 바로 밑에 표시됨
+    # 서버가 죽었을 때 (API 통신 불가)
+    if is_server_down:
         st.markdown(
             '<div class="stAlert" data-testid="stAlert" style="background-color: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.2); border-radius: 8px; padding: 12px 16px; margin-top: 15px; margin-bottom: 20px;">'
             '<div style="color: #FF4B4B; line-height: 1.45; font-size: 14px; font-weight: 500;">'
@@ -85,89 +81,35 @@ def live_dashboard_fragment():
             '</div>',
             unsafe_allow_html=True
         )
-
-    if not is_error_state:
-        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom: 30px;'>로컬 개발 PC 환경 트렌드를 파악하고 과거 이력에 대해 질문하세요.</div>", 
-        unsafe_allow_html=True
-        )
-
-    if is_error_state:
-        # 에러 상태일 때 오직 에러 알림창(stAlert)만 또렷하게 남기고 페이지 전체의 모든 요소를 블러/비활성화 처리
         st.markdown("""
             <style>
-            /* 1. 기본 스타일 트랜지션 제공 */
-            .stApp, .glass-card, [data-testid="stForm"], .install-btn, 
-            button, h1, h2, h3, hr, .stMarkdown, .stPlotlyChart {
-                transition: all 0.3s ease;
+            .stApp, .glass-card, [data-testid="stForm"], .install-btn, button, h1, h2, h3, hr, .stMarkdown, .stPlotlyChart { transition: all 0.3s ease; }
+            [data-testid="stHeader"], h1:not([class*="welcome"]), .install-btn, .glass-card, .stPlotlyChart, [data-testid="stForm"], [data-testid="stChatMessage"], h3, h2, hr, .stDivider, [data-testid="stText"], button {
+                opacity: 0.3 !important; filter: grayscale(90%) blur(2px) !important; pointer-events: none !important; user-select: none !important;
             }
-            
-            /* 2. 에러 알림창을 제외한 모든 핵심 블록과 텍스트를 흐리게 처리 */
-            [data-testid="stHeader"], 
-            h1:not([class*="welcome"]), 
-            .install-btn, 
-            .glass-card, 
-            .stPlotlyChart, 
-            [data-testid="stForm"], 
-            [data-testid="stChatMessage"], 
-            .custom-progress-container, 
-            h3, 
-            h2, 
-            hr, 
-            .stDivider, 
-            [data-testid="stText"],
-            .stMarkdown:not(:has(.welcome-header-container)):not(:has(.stAlert)):not(:has([data-testid="stAlert"])),
-            button {
-                opacity: 0.3 !important;
-                filter: grayscale(90%) blur(2px) !important;
-                pointer-events: none !important;
-                user-select: none !important;
-            }
-            
-            /* 3. 에러 알림창(stAlert) 및 Welcome 헤더 타이틀만 원본 선명도로 강조 */
-            div[data-testid="element-container"]:has(.stAlert),
-            div[data-testid="element-container"]:has([data-testid="stAlert"]),
-            .stAlert,
-            [data-testid="stAlert"],
-            [data-testid="stAlert"] *,
-            div[data-testid="column"]:first-child,
-            div[data-testid="column"]:first-child * {
-                opacity: 1 !important;
-                filter: none !important;
-                pointer-events: auto !important;
-                user-select: auto !important;
-            }
-
-            /* Welcome 헤더 영역은 강제로 모든 필터를 해제하고 선명하게 고정 */
-            .welcome-header-container,
-            .welcome-header-container *,
-            .welcome-header-title,
-            .welcome-header-title *,
-            div[data-testid="element-container"]:has(.welcome-header-container),
-            div[data-testid="element-container"]:has(.welcome-header-container) *,
-            div[data-testid="column"]:has(.welcome-header-container),
-            div[data-testid="column"]:has(.welcome-header-container) *,
-            div[data-testid="column"]:has(.welcome-header-title),
-            div[data-testid="column"]:has(.welcome-header-title) * {
-                opacity: 1 !important;
-                filter: none !important;
-                pointer-events: auto !important;
-                user-select: auto !important;
-            }
+            .welcome-header-container, .welcome-header-title { opacity: 1 !important; filter: none !important; }
             </style>
         """, unsafe_allow_html=True)
+        return
 
-    # 메인 대시보드 렌더링 (카드, 게이지바, 트렌드 차트)
-    if is_agent_installed:
+    # 정상 상태 UI 렌더링
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 30px;'>로컬 개발 PC 환경 트렌드를 파악하고 과거 이력에 대해 질문하세요.</div>", 
+    unsafe_allow_html=True
+    )
+
+    # 핵심 로직 변경: 에이전트가 설치되어 있더라도 오프라인이면 구현해두신 "empty_state" 렌더링
+    if is_agent_installed and is_agent_online:
         render_dashboard(stats)
+        st.session_state["show_chat"] = True
     else:
         render_empty_state()
+        st.session_state["show_chat"] = False
 
 # 라이브 대시보드 프래그먼트 호출
 live_dashboard_fragment()
 
-# 에이전트가 설치된 경우에만 RAG 챗 인터페이스 렌더링
-if st.session_state.get("is_agent_installed", False):
+# 에이전트가 정상적으로 켜져 있을 때만 챗 인터페이스 렌더링
+if st.session_state.get("show_chat", False) and not st.session_state.get("is_server_down", False):
     st.divider()
-    is_err = st.session_state.get("is_error_state", False)
-    render_chat_interface(is_err, is_local)
+    render_chat_interface(False, is_local)

@@ -32,7 +32,6 @@ cat > "$CONFIG_FILE" <<EOF
 EOF
 
 # 4. 백엔드 서버로부터 최신 에이전트 소스 파일들 다운로드
-# [★교정] Nginx 차단 문제를 우회하기 위해 다이렉트 파일 서빙 라우터 API 주소인 /api/logmon/static/ 을 조준합니다.
 AGENT_SCRIPT_PATH="$AGENT_DIR/agent_main.py"
 mkdir -p "$AGENT_DIR/core"
 
@@ -109,12 +108,17 @@ else
     exit 1
 fi
 
-# 7. 백엔드에 설치 완료 노티 전송 (UX 동기화용 메타 데이터)
+# 7. 백엔드에 설치 완료 노티 전송
 curl -s -X POST \
   -H "Content-Type: application/json" \
   -H "X-LogMon-API-Key: $API_KEY" \
   -d "{\"source_tool\": \"Agent CLI\", \"event_type\": \"AGENT_INSTALL\", \"raw_message\": \"Logmon 에이전트 설치 완료\"}" \
   "$BACKEND_URL/api/logmon/upload" >/dev/null || true
 
-# 8. 설치 완료
+# =========================================================================
+# [핵심 UX 장치] 대시보드 즉각 화면 전환을 위한 최초 1회 강제 트리거
+# =========================================================================
+echo "🚀 대시보드 화면 전환을 위해 데이터를 즉시 동기화합니다..."
+bash "$AGENT_DIR/run_agent.sh" >/dev/null 2>&1 &
+
 exit 0

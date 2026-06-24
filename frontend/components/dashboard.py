@@ -7,12 +7,18 @@ def format_sync_time(last_sync_time_str: str, server_time_str: str = None) -> st
     if not last_sync_time_str:
         return "데이터 없음"
     try:
-        last_dt = datetime.datetime.strptime(last_sync_time_str, "%Y-%m-%d %H:%M:%S")
+        # 마이크로초가 포함된 경우를 대비해 점을 기준으로 앞부분만 파싱
+        time_part = last_sync_time_str.split('.')[0]
+        last_dt = datetime.datetime.strptime(time_part, "%Y-%m-%d %H:%M:%S")
+        
         if server_time_str:
-            now = datetime.datetime.strptime(server_time_str, "%Y-%m-%d %H:%M:%S")
+            server_time_part = server_time_str.split('.')[0]
+            now = datetime.datetime.strptime(server_time_part, "%Y-%m-%d %H:%M:%S")
         else:
             now = datetime.datetime.now()
+            
         diff = int((now - last_dt).total_seconds())
+        
         if diff < 60:
             return "방금 전"
         elif diff < 3600:

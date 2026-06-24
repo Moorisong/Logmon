@@ -30,6 +30,14 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE user_key = ?", (user_key,))
         total_logs = cursor.fetchone()[0] or 0
         
+        if total_logs == 0:
+            return {
+                "is_online": True, "total_logs": 0, "today_tokens": 0, "has_code_ratio": 0.0,
+                "trend_7d": [], "uptime_days": 0, "total_lines": 0, "total_bytes": 0,
+                "last_sync_time": None, "server_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "current_db_mb": round(get_total_db_size_mb(), 2), "max_db_mb": 500.0, "is_agent_installed": False
+            }
+        
         # 2. 오늘 토큰 수
         cursor.execute("""
             SELECT SUM(input_tokens + output_tokens) 
@@ -76,16 +84,19 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
         """, (user_key,))
         is_agent_installed = cursor.fetchone()[0] > 0
 
-        # 데이터 정제
+        # 데이터 정제 (ISO 시간 포맷 호환성 보장)
         first_log = metric_row[0] if metric_row and metric_row[0] else None
         last_sync = metric_row[1] if metric_row and metric_row[1] else None
         
         uptime_days = 0
         if first_log:
             try:
-                first_date = datetime.datetime.strptime(first_log.split(' ')[0], "%Y-%m-%d").date()
+                # ISO 시간 포맷(T 구분자) 처리
+                date_part = first_log.split('T')[0].split(' ')[0]
+                first_date = datetime.datetime.strptime(date_part, "%Y-%m-%d").date()
                 uptime_days = (datetime.datetime.now().date() - first_date).days + 1
-            except:
+            except Exception as e:
+                logger.error(f"날짜 파싱 에러: {e}")
                 uptime_days = 1
 
         data = {
@@ -97,7 +108,7 @@ def get_dashboard_stats(user_key: str) -> Dict[str, Any]:
             "uptime_days": uptime_days,
             "total_lines": metric_row[2] if metric_row and metric_row[2] else 0,
             "total_bytes": metric_row[3] if metric_row and metric_row[3] else 0,
-            "last_sync_time": last_sync,
+            "last_sync_time": last_sync.replace('T', ' ') if last_sync else None, # 'T' 제거하여 UI 호환성 향상
             "server_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "current_db_mb": round(get_total_db_size_mb(), 2),
             "max_db_mb": 500.0,

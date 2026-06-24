@@ -1,4 +1,3 @@
-# backend/llm/rag_engine.py
 import logging
 import datetime
 import sqlite3
@@ -26,7 +25,6 @@ def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 10일 전을 기본값으로 설정
         base_time = start_time if start_time else (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
         
         q_err = "SELECT COUNT(*) FROM ide_activity_logs WHERE event_type LIKE '%ERROR%' AND timestamp >= ?"
@@ -48,29 +46,34 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
         return GUARDRAIL_FALLBACK_MSG
 
     try:
-        # 1. 파이썬이 먼저 정확한 통계를 계산 (결정론적 데이터)
+        # 1. 파이썬이 정확한 통계 계산
         start_time, end_time = parse_relative_datetime(question)
         err_cnt, warn_cnt = get_exact_log_counts(start_time, end_time)
         
-        # 2. 벡터 검색은 '보조적(Qualitative)'으로만 수행 (속도 최적화: top_k 축소)
+        # 2. 벡터 검색 및 중복 제거된 컨텍스트 구성
         results = query_vectors(query_text=question, n_results=top_k, user_key=user_key, start_time=start_time, end_time=end_time)
         raw_docs = results[0] if results else []
         raw_metadatas = results[2] if results else []
 
-        docs = [f"[DATE: {meta.get('timestamp', 'N/A')}]\n{doc}" for doc, meta in zip(raw_docs, raw_metadatas)]
+        docs = []
+        for doc, meta in zip(raw_docs, raw_metadatas):
+            ts = meta.get('timestamp', 'N/A')
+            # 중복 날짜 표기 방지를 위해 본문 정리 및 단일 헤더 구성
+            cleaned_doc = doc.replace(f"[DATE: {ts}]", "").strip()
+            docs.append(f"[DATE: {ts}] {cleaned_doc}")
+            
         context_str = rerank_documents(query=question, documents=docs, top_k=2) if docs else "검색된 로그 없음."
 
-        # 3. 데이터 주입 및 날짜 검증 프롬프트 (필살기)
+        # 3. 데이터 주입 프롬프트
         stats_injection = (
             f"[System Date]: {CURRENT_SYS_TIME}\n"
             "[정확한 실시간 DB 통계 데이터]\n"
             f"- 검색 기간 내 실제 ERROR 로그: {err_cnt}건\n"
             f"- 검색 기간 내 실제 WARN 로그: {warn_cnt}건\n"
             "※ 답변 시 반드시 위 통계 데이터(ERROR/WARN 개수)를 숫자로 명시할 것.\n"
-            "※ 만약 로그의 날짜가 시스템 시간(2026-06-24)보다 과거라면, 이를 반드시 '과거 데이터'로 명시하고, 현재 시점의 문제인지 구분하여 답변할 것.\n\n"
+            "※ 만약 로그의 날짜가 시스템 시간(2026-06-24)보다 과거라면, 이를 반드시 '과거 데이터'로 명시하고 현재 시점의 문제인지 구분할 것.\n\n"
         )
 
-        # 4. 프롬프트 구성 (질문이 통계 중심이면 컨텍스트를 줄임)
         final_question = f"{stats_injection}[분석할 현재 질문]\n{question}"
         
         prompt = RAG_PROMPT_TEMPLATE.format(
@@ -79,7 +82,7 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
             question=final_question
         )
 
-        # 5. LLM 추론 (Stateless: 이전 대화 기억 주입 안 함)
+        # 4. Stateless 추론
         answer = await generate_completion(prompt)
         return postprocess_noun_ending(answer)
 

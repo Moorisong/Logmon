@@ -58,20 +58,20 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
         docs = []
         for doc, meta in zip(raw_docs, raw_metadatas):
             ts = meta.get('timestamp', 'N/A')
-            # 중복 날짜 표기 방지를 위해 본문 정리 및 단일 헤더 구성
             cleaned_doc = doc.replace(f"[DATE: {ts}]", "").strip()
             docs.append(f"[DATE: {ts}] {cleaned_doc}")
             
         context_str = rerank_documents(query=question, documents=docs, top_k=2) if docs else "검색된 로그 없음."
 
-        # 3. 데이터 주입 프롬프트
+        # 3. 데이터 주입 프롬프트 (강제 명령 버전)
         stats_injection = (
-            f"[System Date]: {CURRENT_SYS_TIME}\n"
-            "[정확한 실시간 DB 통계 데이터]\n"
-            f"- 검색 기간 내 실제 ERROR 로그: {err_cnt}건\n"
-            f"- 검색 기간 내 실제 WARN 로그: {warn_cnt}건\n"
-            "※ 답변 시 반드시 위 통계 데이터(ERROR/WARN 개수)를 숫자로 명시할 것.\n"
-            "※ 만약 로그의 날짜가 시스템 시간(2026-06-24)보다 과거라면, 이를 반드시 '과거 데이터'로 명시하고 현재 시점의 문제인지 구분할 것.\n\n"
+            f"[DATE]: {CURRENT_SYS_TIME}\n"
+            "---[REQUIRED DATA: DO NOT CALCULATE]---\n"
+            f"[STATS] ERROR: {err_cnt}, WARN: {warn_cnt}\n"
+            "---------------------------------------\n"
+            "- 위 [STATS] 값을 최우선 진실로 간주하고 답변에 그대로 인용할 것.\n"
+            "- 컨텍스트 내 로그를 다시 세지 말 것. 오직 제공된 [STATS]만 사용할 것.\n"
+            "- 날짜가 과거면 '과거 데이터'로 명시 후 현재와 구분할 것.\n\n"
         )
 
         final_question = f"{stats_injection}[분석할 현재 질문]\n{question}"

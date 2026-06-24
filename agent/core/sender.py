@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 def scan_and_send(filepath: str, backend_url: str, api_key: str):
     """
     타깃 로그 파일을 열어 마지막 체크포인트 이후의 신규 데이터를 최대 500KB 청크 단위로 나누어 백엔드로 전송합니다.
-    (HTTP 413 Payload Too Large 방지 및 대용량 파일의 순차적 100% 동기화 보장)
     """
     if not os.path.exists(filepath):
         logger.debug(f"파일이 존재하지 않습니다: {filepath}")
@@ -63,10 +62,12 @@ def scan_and_send(filepath: str, backend_url: str, api_key: str):
             update_offset(filepath, current_offset)
             continue
 
+        # [수정됨] file_path 정보를 payload에 포함하여 백엔드로 전송
         payload = {
             "source_tool": "Cursor",
             "event_type": "LOG_DUMP",
-            "raw_message": raw_message
+            "raw_message": raw_message,
+            "file_path": filepath
         }
         
         base_url = backend_url.rstrip('/')
@@ -103,4 +104,3 @@ def scan_and_send(filepath: str, backend_url: str, api_key: str):
         except Exception as e:
             logger.error(f"알 수 없는 전송 에러 발생: {e} ({filepath})")
             break
-

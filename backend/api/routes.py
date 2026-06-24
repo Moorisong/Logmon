@@ -20,6 +20,7 @@ class LogPayload(BaseModel):
     input_tokens: Optional[int] = 0
     output_tokens: Optional[int] = 0
     has_code_block: Optional[int] = 0
+    file_path: Optional[str] = "UNKNOWN"  # 데이터 수집을 위해 추가됨
 
 class ChatRequest(BaseModel):
     question: str

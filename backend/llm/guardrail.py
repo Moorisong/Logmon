@@ -1,11 +1,10 @@
-# backend/llm/guardrail.py
 import re
 import logging
 
 logger = logging.getLogger(__name__)
 
 # 파이썬 레벨에서 검출 시 LLM 호출 없이 즉시 반환할 단호한 템플릿 대답
-GUARDRAIL_FALLBACK_MSG = "본 시스템은 IDE 내부 코딩 활동(몰입도, AI 도구 활용, 에러 디버깅)에 특화되어 있어 외부 도구 및 명령어 활동 기록은 수집하거나 분석할 수 없음. 주요 에러 로그나 코딩 시간대 분석을 요청 요망."
+GUARDRAIL_FALLBACK_MSG = "본 시스템은 IDE 내부 코딩 활동(몰입도, AI 도구 활용, 에러 디버깅, 파일 작업)에 특화되어 있습니다. 해당 범주 내의 질문을 해주시면 상세히 분석해 드리겠습니다."
 
 # 띄어쓰기를 완전히 무시하고 매칭하기 위해 공백을 제거한 소문자 형태의 블랙리스트 키워드 세트입니다.
 FORBIDDEN_KEYWORDS = {
@@ -23,12 +22,15 @@ FORBIDDEN_KEYWORDS = {
     "브라우저", "구글링", "검색", "웹서핑", "인터넷"
 }
 
-# 3대 핵심 가치 지표 화이트리스트 키워드 (가드레일 우회 방지 및 오판 방지 보완용)
+# 3대 핵심 가치 지표 화이트리스트 키워드 (확장됨)
 CORE_KEYWORDS = {
     "error", "warning", "log", "exception", "crash", "traceback", "fail", "typeerror",
     "에러", "오류", "경고", "로그", "크래시", "트레이스백", "실패",
     "token", "토큰", "ai", "assist", "copilot", "cloudcode", "assistant", "올라마", "ollama",
-    "workspace", "active", "save", "coding", "코딩", "몰입", "저장", "시간", "수정", "작업"
+    "workspace", "active", "save", "coding", "코딩", "몰입", "저장", "시간", "수정", "작업",
+    # 파일 및 경로 관련 추가
+    "file", "path", "open", "read", "view", "edit", "name",
+    "파일", "경로", "열어본", "수정한", "이름", "작성"
 }
 
 def check_guardrail(question: str) -> bool:
@@ -38,7 +40,7 @@ def check_guardrail(question: str) -> bool:
     """
     q_lower = question.lower().strip()
     
-    # 0. 단순 인사말 패스 — 대화의 자연스러움을 위해 통과 허용
+    # 0. 단순 인사말 패스
     GREETING_PATTERNS = [
         r"^(하이|안녕|반가워|헬로|hi|hello|hey|어이|여보세요)[\s!?~]*$"
     ]
@@ -46,17 +48,16 @@ def check_guardrail(question: str) -> bool:
         if re.search(pattern, q_lower):
             return True
 
-    # 1. 공백과 특수문자를 전부 트림 처리하여 우회 시도를 차단합니다. (예: "g i t   p u s h" -> "gitpush")
+    # 1. 공백과 특수문자를 전부 트림 처리하여 우회 시도 차단
     q_trimmed = re.sub(r'[\s\-_,\./\\\*&^%$#@!~`?+=?|]', '', q_lower)
 
-    # 2. 블랙리스트 검사: 금지 키워드가 공백 제거 본문에 걸리는지 전수 조사
+    # 2. 블랙리스트 검사
     for keyword in FORBIDDEN_KEYWORDS:
         if keyword in q_trimmed:
             logger.warning(f"🚫 [Guardrail 차단] 외부 도구 키워드 감지됨: '{keyword}' (원본 질문: {question})")
             return False
 
-    # 3. 화이트리스트 보완 검사: 3대 핵심 지표 관련 내용이 원본이나 트리밍 본문에 아예 없다면 
-    #    코딩과 무관한 일반 질문(예: "오늘 날씨 어때?")으로 간주하고 방어합니다.
+    # 3. 화이트리스트 보완 검사
     has_core_context = False
     for core_word in CORE_KEYWORDS:
         if core_word in q_lower or core_word in q_trimmed:

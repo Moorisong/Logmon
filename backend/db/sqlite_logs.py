@@ -113,14 +113,12 @@ def insert_activity_log(data: Dict[str, Any]) -> Optional[int]:
     finally:
         conn.close()
 
-# [오류 해결] 누락되었던 cleanup_ttl_logs 함수 추가
 def cleanup_ttl_logs(days: int = 7) -> List[int]:
     conn = get_connection()
     deleted_ids = []
     try:
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
-        # 7일 이전 데이터 삭제
         cursor.execute(f"SELECT id FROM ide_activity_logs WHERE timestamp < datetime('now', '-{days} days', 'localtime')")
         rows = cursor.fetchall()
         deleted_ids = [r[0] for r in rows]
@@ -148,6 +146,19 @@ def cleanup_old_logs(limit: int = 100) -> List[int]:
     finally:
         conn.close()
     return deleted_ids
+
+def delete_unknown_logs() -> int:
+    """시스템 업데이트 이전의 'UNKNOWN' 로그를 삭제하여 분석 품질을 높입니다."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ide_activity_logs WHERE file_path = 'UNKNOWN'")
+        deleted_count = cursor.rowcount
+        conn.commit()
+        logger.info(f"🧹 정제 완료: {deleted_count}개의 'UNKNOWN' 로그 삭제됨.")
+        return deleted_count
+    finally:
+        conn.close()
 
 def delete_all_logs_by_user(user_key: str) -> int:
     conn = get_connection()

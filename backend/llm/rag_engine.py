@@ -1,3 +1,4 @@
+# backend/llm/rag_engine.py
 import logging
 import sqlite3
 import os
@@ -21,7 +22,9 @@ def get_comprehensive_stats(start_time: str, end_time: str) -> Dict[str, str]:
     
     # 1. 코딩 몰입도
     cursor.execute("""
-        SELECT file_path, COUNT(*) 
+        SELECT 
+            CASE WHEN file_path = 'UNKNOWN' THEN '기타(시스템 업데이트 이전)' ELSE file_path END as display_path, 
+            COUNT(*) 
         FROM ide_activity_logs 
         WHERE workspace_active = 1 AND timestamp BETWEEN ? AND ? 
         GROUP BY file_path ORDER BY COUNT(*) DESC LIMIT 5
@@ -56,6 +59,7 @@ def get_comprehensive_stats(start_time: str, end_time: str) -> Dict[str, str]:
         GROUP BY source_tool
     """, (start_time, end_time))
     ide_stats = cursor.fetchall()
+    # [수정 완료]: ide_stats가 비어있는지 확인하도록 로직 수정
     ide_rep = "\n".join([f"- {i}: {c}건" for i, c in ide_stats]) if ide_stats else "정보 없음"
 
     conn.close()

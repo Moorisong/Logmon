@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 _conversation_memory: Dict[str, deque] = {}
 
 # Llama 1B 경량 모델의 컨텍스트 왜곡을 방지하기 위한 기본 대화 기억 세트 수
-DEFAULT_MAX_HISTORY = 3
+DEFAULT_MAX_HISTORY = 2
 
 def get_conversation_context(user_key: str) -> str:
     """
@@ -30,7 +30,7 @@ def get_conversation_context(user_key: str) -> str:
 def add_conversation(user_key: str, question: str, answer: str, max_history: int = DEFAULT_MAX_HISTORY) -> None:
     """
     새로운 질문과 답변 쌍을 메모리에 적재합니다. 
-    지정된 max_history(기본 3개)를 초과하면 가장 오래된 세트가 자동으로 폐기됩니다.
+    지정된 max_history(기본 2개)를 초과하면 가장 오래된 세트가 자동으로 폐기됩니다.
     """
     if user_key not in _conversation_memory:
         # deque의 maxlen을 지정하면 파이썬 레벨에서 자동으로 FIFO(First-In-First-Out) 슬라이딩 윈도우가 보장됩니다.

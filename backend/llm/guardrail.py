@@ -1,38 +1,44 @@
 # backend/llm/guardrail.py
 import re
+import logging
 
-DEV_KEYWORDS = {
-    # 기존 키워드
-    "error", "warning", "log", "db", "git", "docker", "port", "binding", "connection", "critical", "exception", "crash",
-    "ollama", "sqlite", "engine", "ai",
-    "에러", "오류", "경고", "로그", "디비", "깃", "도커", "포트", "바인딩", "커넥션", "문제", "해결", "작업", "크래시",
-    # IDE 관련
-    "ide", "vscode", "intellij", "인텔리제이",
-    # 실행/빌드 관련
-    "실행", "시간", "컴파일", "빌드", "build", "run",
-    # 인프라/통계 관련
-    "토큰", "token", "api", "호출", "서버", "server", "호스트", "host", "컨테이너", "container",
-    "상태", "status", "메모리", "memory", "cpu", "트래픽", "스케줄러", "배치"
+logger = logging.getLogger(__name__)
+
+# 파이썬 레벨에서 검출 시 LLM 호출 없이 즉시 반환할 단호한 템플릿 대답
+GUARDRAIL_FALLBACK_MSG = "본 시스템은 IDE 내부 코딩 활동(몰입도, AI 도구 활용, 에러 디버깅)에 특화되어 있어 외부 도구 및 명령어 활동 기록은 수집하거나 분석할 수 없음. 주요 에러 로그나 코딩 시간대 분석을 요청 요망."
+
+# 띄어쓰기를 완전히 무시하고 매칭하기 위해 공백을 제거한 소문자 형태의 블랙리스트 키워드 세트입니다.
+FORBIDDEN_KEYWORDS = {
+    # Git 및 원격 저장소 활동 관련
+    "git", "깃", "push", "푸시", "푸쉬", "commit", "커밋", "pull", "풀", "merge", "머지", 
+    "clone", "클론", "github", "깃헙", "깃허브", "gitlab", "깃랩", "fetch", "페치", "브랜치", "branch",
+    
+    # 가상화, 인프라 및 OS 시스템 환경 관련
+    "docker", "도커", "container", "컨테이너", "kubernetes", "쿠버네티스", "k8s", "aws", "gcp", "azure", 
+    "터미널", "terminal", "cmd", "명령프롬프트", "powershell", "파워쉘", "shell", "쉘", "linux", "리눅스",
+    
+    # 일반 웹, 미디어 및 딴짓/소통 도구 관련
+    "youtube", "유튜브", "netflix", "넷플릭스", "game", "게임", "slack", "슬랙", "discord", "디스코드", 
+    "카톡", "카카오톡", "메신저", "teams", "팀즈", "chrome", "크롬", "safari", "사파리", "browser", 
+    "브라우저", "구글링", "검색", "웹서핑", "인터넷"
 }
 
-GUARDRAIL_FALLBACK_MSG = "죄송합니다. 저는 Logmon 시스템 로그 및 장애 분석 전용 AI 에이전트입니다. 개발 및 로그 관련 질문에만 답변할 수 있습니다."
-
-# Fuzzy 매칭용 정규식 패턴 리스트 (오타 및 유사어 대응)
-FUZZY_PATTERNS = [
-    r"경고로[그드]",       # 경고로그, 경고로드
-    r"[에애]러로[그드]",     # 에러로그, 에러로드, 애러로그, 애러로드
-    r"빌드로[그드]",       # 빌드로그, 빌드로드
-    r"[에애]러",          # 에러, 애러 오타 대응
-    r"워닝",              # warning 유사어
-    r"디비"               # DB 유사어
-]
+# 3대 핵심 가치 지표 화이트리스트 키워드 (가드레일 우회 방지 및 오판 방지 보완용)
+CORE_KEYWORDS = {
+    "error", "warning", "log", "exception", "crash", "traceback", "fail", "typeerror",
+    "에러", "오류", "경고", "로그", "크래시", "트레이스백", "실패",
+    "token", "토큰", "ai", "assist", "copilot", "cloudcode", "assistant", "올라마", "ollama",
+    "workspace", "active", "save", "coding", "코딩", "몰입", "저장", "시간", "수정", "작업"
+}
 
 def check_guardrail(question: str) -> bool:
+    """
+    사용자의 질문을 검사하여 외부 활동 분석 요청을 파이썬 선에서 선제 차단합니다.
+    안전한 질문이면 True, 차단해야 할 외부 도구 질문이면 False를 반환합니다.
+    """
     q_lower = question.lower().strip()
-    q_no_space = q_lower.replace(" ", "")
-
-    # 0. 인사말 허용 패턴 — 짧은 인사는 가드레일 통과 (로그몬 친화 대화 허용)
-    #    '하이', '안녕', '반가워', 'hi', 'hello', '헬로' 등
+    
+    # 0. 단순 인사말 패스 — 대화의 자연스러움을 위해 통과 허용
     GREETING_PATTERNS = [
         r"^(하이|안녕|반가워|헬로|hi|hello|hey|어이|여보세요)[\s!?~]*$"
     ]
@@ -40,18 +46,25 @@ def check_guardrail(question: str) -> bool:
         if re.search(pattern, q_lower):
             return True
 
-    # 1. 키워드 매칭 (질문 원본 및 공백 제거 텍스트 기준)
-    for keyword in DEV_KEYWORDS:
-        if keyword in q_lower or keyword in q_no_space:
-            return True
+    # 1. 공백과 특수문자를 전부 트림 처리하여 우회 시도를 차단합니다. (예: "g i t   p u s h" -> "gitpush")
+    q_trimmed = re.sub(r'[\s\-_,\./\\\*&^%$#@!~`?+=?|]', '', q_lower)
 
-    # 2. 정규식 패턴 매칭 (Fuzzy Match - 원본 및 공백 제거 텍스트 기준)
-    for pattern in FUZZY_PATTERNS:
-        if re.search(pattern, q_lower) or re.search(pattern, q_no_space):
-            return True
+    # 2. 블랙리스트 검사: 금지 키워드가 공백 제거 본문에 걸리는지 전수 조사
+    for keyword in FORBIDDEN_KEYWORDS:
+        if keyword in q_trimmed:
+            logger.warning(f"🚫 [Guardrail 차단] 외부 도구 키워드 감지됨: '{keyword}' (원본 질문: {question})")
+            return False
 
-    return False
+    # 3. 화이트리스트 보완 검사: 3대 핵심 지표 관련 내용이 원본이나 트리밍 본문에 아예 없다면 
+    #    코딩과 무관한 일반 질문(예: "오늘 날씨 어때?")으로 간주하고 방어합니다.
+    has_core_context = False
+    for core_word in CORE_KEYWORDS:
+        if core_word in q_lower or core_word in q_trimmed:
+            has_core_context = True
+            break
+            
+    if not has_core_context:
+        logger.warning(f"🚫 [Guardrail 차단] 3대 핵심 지표와 무관한 일반 질문 필터링 (원본 질문: {question})")
+        return False
 
-
-
-
+    return True

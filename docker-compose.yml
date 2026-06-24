@@ -26,7 +26,7 @@ services:
       - LOGMON_DB_DIR=/app/data
       - LOGMON_CHROMA_DIR=/app/chroma_data
       - OLLAMA_HOST=http://logmon-ollama:11434
-      - LLM_MODEL=llama3.2:1b 
+      - LLM_MODEL=qwen2.5:3b 
       - ALLOWED_API_KEYS=${ALLOWED_API_KEYS}
       - ANONYMIZED_TELEMETRY=False
     volumes:

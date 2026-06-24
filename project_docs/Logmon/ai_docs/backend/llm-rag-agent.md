@@ -5,7 +5,7 @@
 ---
 
 ## 📝 1. 연동 기획 명세 ([Logmon-architecture.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/system/Logmon-architecture.md), [Logmon-db-specification.md](file:///Users/shkim/Desktop/Project/Logmon/project_docs/Logmon/human_docs/database/Logmon-db-specification.md))
-* **로컬 LLM**: Llama 3.2 1B (`llama3.2:1b`)
+* **로컬 LLM**: Llama 3.2 1B (`qwen2.5:3b`)
 * **임베딩**: `nomic-embed-text`
 * **엔드포인트**: `http://logmon-ollama:11434` 내부 연동 (외부 노출 불가)
 * **목적**: 과거의 사용 로그 및 질문/해결 맥락을 검색하여 개발자의 과거 컨텍스트 질의에 정확하게 응답.
@@ -33,7 +33,7 @@ backend/
 #### 1단계: Ollama 비동기 통신 구현
 * 외부 라이브러리 의존성을 최소화하고 N95 CPU 블로킹을 막기 위해 `httpx` 비동기 라이브러리를 활용해 Ollama API 클라이언트를 제작합니다.
 * 임베딩 요청(`/api/embeddings`) 및 대답 생성 요청(`/api/generate` 또는 `/api/chat`)을 비동기로 구현합니다.
-* 타겟 모델을 `llama3.2:1b`로 지정하여 추론 병목을 최소화합니다.
+* 타겟 모델을 `qwen2.5:3b`로 지정하여 추론 병목을 최소화합니다.
 * **[개선] 커넥션 헬스체크 튜닝**: Ollama 모델 Prefill 시 N95 CPU 병목으로 인한 가짜 오프라인(타임아웃 감지 오류) 상태 유입을 원천 차단하기 위해, 연결(Connect) 타임아웃을 3.0초로 연장하고 전체 읽기 타임아웃을 180초로 확보한 `httpx.Timeout(180.0, connect=3.0)` 설정을 기본 제공합니다.
 
 #### 2단계: RAG Retrieval 파이프라인

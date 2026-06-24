@@ -30,7 +30,7 @@ try:
 except ValueError:
     OLLAMA_NUM_THREAD = 3
 
-MODEL_NAME = os.getenv("LLM_MODEL", "llama3.2:1b")
+MODEL_NAME = os.getenv("LLM_MODEL", "qwen2.5:3b")
 REAL_DB_PATH = "/app/data/logmon.db"
 
 # Fast-track route_key → 팩트 함수 매핑 테이블

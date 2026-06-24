@@ -69,18 +69,18 @@ def test_parse_relative_datetime_fallback():
 @pytest.mark.asyncio
 @respx.mock
 async def test_llm_client_uses_llama_model():
-    """Ollama API 호출 시 모델 이름이 llama3.2:1b로 설정되어 전송되는지 검증"""
+    """Ollama API 호출 시 모델 이름이 qwen2.5:3b로 설정되어 전송되는지 검증"""
     base = OLLAMA_HOST.rstrip("/")
     endpoint = f"{base}/api/generate"
     mock_route = respx.post(endpoint).mock(
         return_value=httpx.Response(200, json={"response": "Llama Answer"})
     )
-    assert MODEL_NAME == "llama3.2:1b"
+    assert MODEL_NAME == "qwen2.5:3b"
     result = await generate_completion("테스트용 프롬프트")
     assert result == "Llama Answer"
     import json
     payload = json.loads(mock_route.calls.last.request.content)
-    assert payload["model"] == "llama3.2:1b"
+    assert payload["model"] == "qwen2.5:3b"
 
 
 # 3. 컨텍스트 압축 검증

@@ -1,9 +1,7 @@
 import logging
-import datetime
 import sqlite3
 import os
-from typing import Optional
-
+from typing import Tuple
 from backend.db.chroma_handler import query_vectors
 from backend.llm.client import generate_completion
 from backend.llm.prompt_templates import RAG_PROMPT_TEMPLATE
@@ -12,83 +10,63 @@ from backend.llm.reranker import rerank_documents
 from backend.llm.utils import postprocess_noun_ending, parse_relative_datetime
 
 logger = logging.getLogger(__name__)
-_TZ_KST = datetime.timezone(datetime.timedelta(hours=9))
 CURRENT_SYS_TIME = "2026-06-24"
 
-def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> tuple:
-    """SQLite DB에서 메시지 내 [error], [warning] 태그를 기준으로 로그 개수를 카운트합니다."""
-    db_dir = os.environ.get("LOGMON_DB_DIR", "/app/data")
-    db_path = os.path.join(db_dir, "logmon.db")
+def get_stats_data(start_time: str, end_time: str) -> Tuple[int, int, str]:
+    """에러 총계와 날짜별 상세 통계를 반환합니다."""
+    conn = sqlite3.connect(os.path.join(os.environ.get("LOGMON_DB_DIR", "/app/data"), "logmon.db"))
+    cursor = conn.cursor()
     
-    error_count, warn_count = 0, 0
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        base_time = start_time if start_time else (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
-        
-        # raw_message 내 태그를 기준으로 정확하게 카운트
-        q_err = "SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[error]%' AND timestamp >= ?"
-        q_warn = "SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[warning]%' AND timestamp >= ?"
-        
-        cursor.execute(q_err, (base_time,))
-        error_count = cursor.fetchone()[0]
-        cursor.execute(q_warn, (base_time,))
-        warn_count = cursor.fetchone()[0]
-        conn.close()
-    except Exception as e:
-        logger.error(f"❌ 실시간 통계 조회 오류: {e}")
-    return error_count, warn_count
+    # 총계
+    cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[error]%' AND timestamp BETWEEN ? AND ?", (start_time, end_time))
+    err = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[warning]%' AND timestamp BETWEEN ? AND ?", (start_time, end_time))
+    warn = cursor.fetchone()[0]
+    
+    # 날짜별 통계 (LLM이 답변할 수 있게 함)
+    cursor.execute("""
+        SELECT date(timestamp), COUNT(*) 
+        FROM ide_activity_logs 
+        WHERE raw_message LIKE '%[error]%' AND timestamp BETWEEN ? AND ? 
+        GROUP BY date(timestamp) 
+        ORDER BY date(timestamp) DESC
+    """, (start_time, end_time))
+    daily_stats = cursor.fetchall()
+    
+    table_str = "\n".join([f"- {d}: {c}회" for d, c in daily_stats])
+    conn.close()
+    return err, warn, table_str
 
 async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
-    logger.info(f"RAG 질의 시작 (Stateless Mode): {question}")
+    if not check_guardrail(question): return GUARDRAIL_FALLBACK_MSG
+
+    start_time, end_time = parse_relative_datetime(question)
+    err_cnt, warn_cnt, daily_table = get_stats_data(start_time, end_time)
     
-    if not check_guardrail(question):
-        return GUARDRAIL_FALLBACK_MSG
+    # 벡터 검색 (통계 로그 방해 금지: 통계 텍스트가 포함된 로그는 필터링)
+    results = query_vectors(question, top_k, user_key, start_time, end_time)
+    docs = []
+    if results and results[0]:
+        for doc in results[0]:
+            if "[STATISTICS]" not in doc: # 방해물 제거
+                docs.append(doc)
+    
+    context_str = "\n".join(docs[:3]) if docs else "검색된 로그 없음."
 
-    try:
-        # 1. 파이썬이 정확한 통계 계산
-        start_time, end_time = parse_relative_datetime(question)
-        err_cnt, warn_cnt = get_exact_log_counts(start_time, end_time)
-        
-        # 2. 벡터 검색 및 중복 제거된 컨텍스트 구성
-        results = query_vectors(query_text=question, n_results=top_k, user_key=user_key, start_time=start_time, end_time=end_time)
-        raw_docs = results[0] if results else []
-        raw_metadatas = results[2] if results else []
+    # 프롬프트: 확실한 팩트 주입
+    prompt = (
+        f"당신은 분석가입니다. [확정 데이터]를 근거로만 답변하십시오.\n\n"
+        f"[확정 데이터]\n"
+        f"- 기간: {start_time} ~ {end_time}\n"
+        f"- 에러 총 횟수: {err_cnt}회\n"
+        f"- 날짜별 에러 상세:\n{daily_table}\n\n"
+        f"[참고용 컨텍스트]\n{context_str}\n\n"
+        f"질문: {question}\n\n"
+        f"지침:\n1. [확정 데이터]가 정답입니다. 컨텍스트 속 수치는 무시하십시오.\n"
+        f"2. 0건이면 '없음'으로 답변하십시오.\n"
+        f"3. 가장 많은 날짜를 물으면 [확정 데이터]의 '날짜별 에러 상세'를 확인해 대답하십시오.\n"
+        f"4. 한국어 명사형으로 간결하게 답변하십시오."
+    )
 
-        docs = []
-        for doc, meta in zip(raw_docs, raw_metadatas):
-            ts = meta.get('timestamp', 'N/A')
-            # 중복 날짜 표기 방지를 위해 본문 정리 및 단일 헤더 구성
-            cleaned_doc = doc.replace(f"[DATE: {ts}]", "").strip()
-            docs.append(f"[DATE: {ts}] {cleaned_doc}")
-            
-        context_str = rerank_documents(query=question, documents=docs, top_k=2) if docs else "검색된 로그 없음."
-
-        # 3. 데이터 주입 프롬프트 (강제 명령 버전)
-        stats_injection = (
-            f"[DATE]: {CURRENT_SYS_TIME}\n"
-            "---[REQUIRED DATA: DO NOT CALCULATE]---\n"
-            f"[STATS] ERROR: {err_cnt}, WARN: {warn_cnt}\n"
-            "---------------------------------------\n"
-            "- 위 [STATS] 값을 최우선 진실로 간주하고 답변에 그대로 인용할 것.\n"
-            "- 컨텍스트 내 로그를 다시 세지 말 것.\n"
-            "- [Context]에 에러 로그 내용이 없으면 '에러 로그 상세 내용은 제공된 컨텍스트에서 검색되지 않음'이라고 명시할 것.\n"
-            "- 날짜가 과거면 '과거 데이터'로 명시 후 현재와 구분할 것.\n\n"
-        )
-
-        final_question = f"{stats_injection}[분석할 현재 질문]\n{question}"
-        
-        prompt = RAG_PROMPT_TEMPLATE.format(
-            current_date=CURRENT_SYS_TIME,
-            context=context_str,
-            question=final_question
-        )
-
-        # 4. Stateless 추론
-        answer = await generate_completion(prompt)
-        return postprocess_noun_ending(answer)
-
-    except Exception as e:
-        logger.error(f"RAG 추론 오류: {e}", exc_info=True)
-        return "데이터 분석 중 기술적 오류가 발생함."
+    answer = await generate_completion(prompt)
+    return postprocess_noun_ending(answer)

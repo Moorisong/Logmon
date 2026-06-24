@@ -16,7 +16,7 @@ _TZ_KST = datetime.timezone(datetime.timedelta(hours=9))
 CURRENT_SYS_TIME = "2026-06-24"
 
 def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> tuple:
-    """SQLite DB에서 특정 기간 동안의 실제 ERROR 및 WARN 로그 개수를 정확히 카운트합니다."""
+    """SQLite DB에서 메시지 내 [error], [warning] 태그를 기준으로 로그 개수를 카운트합니다."""
     db_dir = os.environ.get("LOGMON_DB_DIR", "/app/data")
     db_path = os.path.join(db_dir, "logmon.db")
     
@@ -27,8 +27,9 @@ def get_exact_log_counts(start_time: Optional[str], end_time: Optional[str]) -> 
         
         base_time = start_time if start_time else (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
         
-        q_err = "SELECT COUNT(*) FROM ide_activity_logs WHERE event_type LIKE '%ERROR%' AND timestamp >= ?"
-        q_warn = "SELECT COUNT(*) FROM ide_activity_logs WHERE event_type LIKE '%WARN%' AND timestamp >= ?"
+        # raw_message 내 태그를 기준으로 정확하게 카운트
+        q_err = "SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[error]%' AND timestamp >= ?"
+        q_warn = "SELECT COUNT(*) FROM ide_activity_logs WHERE raw_message LIKE '%[warning]%' AND timestamp >= ?"
         
         cursor.execute(q_err, (base_time,))
         error_count = cursor.fetchone()[0]
@@ -58,6 +59,7 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
         docs = []
         for doc, meta in zip(raw_docs, raw_metadatas):
             ts = meta.get('timestamp', 'N/A')
+            # 중복 날짜 표기 방지를 위해 본문 정리 및 단일 헤더 구성
             cleaned_doc = doc.replace(f"[DATE: {ts}]", "").strip()
             docs.append(f"[DATE: {ts}] {cleaned_doc}")
             
@@ -70,7 +72,8 @@ async def ask_rag_agent(question: str, user_key: str, top_k: int = 5) -> str:
             f"[STATS] ERROR: {err_cnt}, WARN: {warn_cnt}\n"
             "---------------------------------------\n"
             "- 위 [STATS] 값을 최우선 진실로 간주하고 답변에 그대로 인용할 것.\n"
-            "- 컨텍스트 내 로그를 다시 세지 말 것. 오직 제공된 [STATS]만 사용할 것.\n"
+            "- 컨텍스트 내 로그를 다시 세지 말 것.\n"
+            "- [Context]에 에러 로그 내용이 없으면 '에러 로그 상세 내용은 제공된 컨텍스트에서 검색되지 않음'이라고 명시할 것.\n"
             "- 날짜가 과거면 '과거 데이터'로 명시 후 현재와 구분할 것.\n\n"
         )
 
